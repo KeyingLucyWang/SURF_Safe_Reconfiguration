@@ -189,7 +189,11 @@ class World(object):
         while self.player is None:
             # spawn_points = self.map.get_spawn_points()
             # spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
-            waypoint = self.map.get_waypoint(carla.Location(x=4.8, y=-36, z=30))
+
+            # start position on the rightmost lane of the highway (exit lane)
+            #waypoint = self.map.get_waypoint(carla.Location(x=15.3, y=-36, z=30))
+            waypoint = self.map.get_waypoint(carla.Location(x=7.8, y=-160, z=30))
+            #waypoint = self.map.get_waypoint(carla.Location(x=48, y=330, z=30))
             self.player = self.world.spawn_actor(blueprint, waypoint.transform)
             #self.player = self.world.try_spawn_actor(blueprint, spawn_point)
         # Set up the sensors.
@@ -416,6 +420,31 @@ class HUD(object):
         max_col = max(1.0, max(collision))
         collision = [x / max_col for x in collision]
         vehicles = world.world.get_actors().filter('vehicle.*')
+
+        exit_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Exit)
+        entry_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Entry)
+        parking_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Parking)
+        border_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Border)
+        sidewalk_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Sidewalk)
+        biking_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Biking)
+
+        if(exit_lane != None):
+            waypoint = exit_lane
+        elif(entry_lane != None):
+            waypoint = entry_lane
+        # elif(parking_lane != None):
+        #     waypoint = parking_lane;
+        # elif(border_lane != None):
+        #     waypoint = border_lane
+        # elif(sidewalk_lane != None):
+        #    waypoint = sidewalk_lane
+        # elif(biking_lane != None):
+        #     waypoint = biking_lane
+        else: # driving_lane
+            waypoint = world.map.get_waypoint(world.player.get_location())
+
+        speed_limit = world.player.get_speed_limit()
+
         self._info_text = [
             'Server:  % 16.0f FPS' % self.server_fps,
             'Client:  % 16.0f FPS' % clock.get_fps(),
@@ -438,7 +467,9 @@ class HUD(object):
                 ('Reverse:', c.reverse),
                 ('Hand brake:', c.hand_brake),
                 ('Manual:', c.manual_gear_shift),
-                'Gear:        %s' % {-1: 'R', 0: 'N'}.get(c.gear, c.gear)]
+                'Gear:        %s' % {-1: 'R', 0: 'N'}.get(c.gear, c.gear),
+                'Current Speed Limit:', str(speed_limit),
+                'Current Lane Type:', str(waypoint.lane_type)]
         elif isinstance(c, carla.WalkerControl):
             self._info_text += [
                 ('Speed:', c.speed, 0.0, 5.556),
@@ -781,7 +812,7 @@ def game_loop(args):
         client = carla.Client(args.host, args.port)
         client.set_timeout(2.0)
 
-        client.load_world('Town06')
+        client.load_world('Town04')
         client.reload_world()
 
         display = pygame.display.set_mode(
@@ -793,6 +824,12 @@ def game_loop(args):
 
         
         controller = KeyboardControl(world, args.autopilot)
+
+        waypoints = world.map.generate_waypoints(2)
+        for w in waypoints:
+            world.world.debug.draw_string(w.transform.location, 'O', draw_shadow=False,
+                                       color=carla.Color(r=255, g=0, b=0), life_time=120.0,
+                                       persistent_lines=True)
 
         clock = pygame.time.Clock()
         while True:
