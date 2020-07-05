@@ -119,7 +119,18 @@ try:
 except ImportError:
     raise RuntimeError('cannot import numpy, make sure numpy package is installed')
 
+# ==============================================================================
+# -- add PythonAPI for release mode --------------------------------------------
+# ==============================================================================
+try:
+    sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + '/carla')
+except IndexError:
+    pass
 
+import carla
+from carla import ColorConverter as cc
+from agents.navigation.roaming_agent import RoamingAgent
+from agents.navigation.basic_agent import BasicAgent
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
 # ==============================================================================
@@ -423,10 +434,10 @@ class HUD(object):
 
         exit_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Exit)
         entry_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Entry)
-        parking_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Parking)
-        border_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Border)
-        sidewalk_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Sidewalk)
-        biking_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Biking)
+        # parking_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Parking)
+        # border_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Border)
+        # sidewalk_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Sidewalk)
+        # biking_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Biking)
 
         if(exit_lane != None):
             waypoint = exit_lane
@@ -831,14 +842,26 @@ def game_loop(args):
                                        color=carla.Color(r=255, g=0, b=0), life_time=120.0,
                                        persistent_lines=True)
 
+        # if args.agent == "Roaming":
+        #     agent = RoamingAgent(world.player);
+        # else:
+        #     agent = BasicAgent(world.player);
+        agent = RoamingAgent(world.player);
+        
         clock = pygame.time.Clock()
         while True:
-            clock.tick_busy_loop(60)
+            #clock.tick_busy_loop(60)
             if controller.parse_events(client, world, clock):
                 return
+            
+            world.world.wait_for_tick(10.0)
+
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
+            control = agent.run_step()
+            control.manual_gear_shift = False
+            world.player.apply_control(control)
 
     finally:
 
@@ -921,3 +944,4 @@ def main():
 if __name__ == '__main__':
 
     main()
+
