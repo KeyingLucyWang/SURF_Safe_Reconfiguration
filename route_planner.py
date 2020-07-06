@@ -156,6 +156,7 @@ class LocalPlanner(object):
             next_waypoints = list(last_waypoint.next(self._sampling_radius))
 
             if len(next_waypoints) == 1:
+                print("only one waypoint available")
                 # only one option available ==> lanefollowing
                 next_waypoint = next_waypoints[0]
                 road_option = RoadOption.LANEFOLLOW
@@ -164,12 +165,29 @@ class LocalPlanner(object):
                 road_options_list = _retrieve_options(
                     next_waypoints, last_waypoint)
                 
-                road_option = random.choice(road_options_list)
+                print("choosing waypoints")
+
+                min_dist = -1
+                road_option = RoadOption.LANEFOLLOW
+
+                for option in road_options_list:
+                    if option == RoadOption.LEFT:
+                        print("left")
+                    elif option == RoadOption.RIGHT:
+                        print("right")
+                    elif option == RoadOption.LANEFOLLOW:
+                        print("follow")
                 
+                    next_waypoint = next_waypoints[road_options_list.index(
+                        option)]
 
-                next_waypoint = next_waypoints[road_options_list.index(
-                    road_option)]
+                    dist = dest.distance(next_waypoint.transform.location)
 
+                    if min_dist < 0 or dist < min_dist:
+                        road_option = option
+                        min_dist = dist
+                #road_option = random.choice(road_options_list)
+            
             self._waypoints_queue.append((next_waypoint, road_option))
 
     def set_global_plan(self, current_plan):
@@ -198,6 +216,7 @@ class LocalPlanner(object):
             if not current_waypoint.is_intersection:
                 self._target_road_option = RoadOption.LANEFOLLOW
 
+            print("way points queue is empty")
             control = carla.VehicleControl()
             control.steer = 0.0
             control.throttle = 0.0
@@ -221,8 +240,9 @@ class LocalPlanner(object):
         # target waypoint
         self.target_waypoint, self._target_road_option = self._waypoint_buffer[0]
         # move using PID controllers
+        #print("moving using PID controllers")
         control = self._vehicle_controller.run_step(self._target_speed, self.target_waypoint)
-
+        
         # purge the queue of obsolete waypoints
         vehicle_transform = self._vehicle.get_transform()
         max_index = -1
@@ -235,8 +255,9 @@ class LocalPlanner(object):
             for i in range(max_index + 1):
                 self._waypoint_buffer.popleft()
 
-        if debug:
-            draw_waypoints(self._vehicle.get_world(), [self.target_waypoint], self._vehicle.get_location().z + 1.0)
+        # if debug:
+        #     print("here")
+        draw_waypoints(self._vehicle.get_world(), [self.target_waypoint], self._vehicle.get_location().z + 1.0)
     
         # if self._target_road_option != RoadOption.LANEFOLLOW not current_waypoint.is_intersection:
         #     self._target_road_option = RoadOption.LANEFOLLOW

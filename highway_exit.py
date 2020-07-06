@@ -129,8 +129,9 @@ except IndexError:
 
 import carla
 from carla import ColorConverter as cc
-from agents.navigation.roaming_agent import RoamingAgent
-from agents.navigation.basic_agent import BasicAgent
+# from agents.navigation.roaming_agent import RoamingAgent
+# from agents.navigation.basic_agent import BasicAgent
+from roaming_agent.roaming_agent import RoamingAgent
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
 # ==============================================================================
@@ -203,7 +204,13 @@ class World(object):
 
             # start position on the rightmost lane of the highway (exit lane)
             #waypoint = self.map.get_waypoint(carla.Location(x=15.3, y=-36, z=30))
-            waypoint = self.map.get_waypoint(carla.Location(x=7.8, y=-160, z=30))
+            #end location: waypoint = self.map.get_waypoint(carla.Location(x=10, y=-160, z=30))
+            
+            #enter highway (speed limit 30 -> 90)
+            waypoint = self.map.get_waypoint(carla.Location(x=20, y=-174, z=30))
+            
+            #waypoint = self.map.get_waypoint(carla.Location(x=20, y=-174, z=30))
+
             #waypoint = self.map.get_waypoint(carla.Location(x=48, y=330, z=30))
             self.player = self.world.spawn_actor(blueprint, waypoint.transform)
             #self.player = self.world.try_spawn_actor(blueprint, spawn_point)
@@ -345,11 +352,14 @@ class KeyboardControl(object):
                         world.hud.notification('Autopilot %s' % ('On' if self._autopilot_enabled else 'Off'))
         if not self._autopilot_enabled:
             if isinstance(self._control, carla.VehicleControl):
-                self._parse_vehicle_keys(pygame.key.get_pressed(), clock.get_time())
-                self._control.reverse = self._control.gear < 0
+                keys = pygame.key.get_pressed()
+                if sum(keys) > 0:
+                    self._parse_vehicle_keys(keys, clock.get_time())
+                    self._control.reverse = self._control.gear < 0
+                    world.player.apply_control(self._control)
             elif isinstance(self._control, carla.WalkerControl):
                 self._parse_walker_keys(pygame.key.get_pressed(), clock.get_time())
-            world.player.apply_control(self._control)
+                world.player.apply_control(self._control)
 
     def _parse_vehicle_keys(self, keys, milliseconds):
         self._control.throttle = 1.0 if keys[K_UP] or keys[K_w] else 0.0
@@ -821,7 +831,7 @@ def game_loop(args):
 
     try:
         client = carla.Client(args.host, args.port)
-        client.set_timeout(2.0)
+        client.set_timeout(4.0)
 
         client.load_world('Town04')
         client.reload_world()
@@ -834,19 +844,18 @@ def game_loop(args):
         world = World(client.get_world(), hud, args)
 
         
-        controller = KeyboardControl(world, args.autopilot)
+        controller = KeyboardControl(world, False)
 
-        waypoints = world.map.generate_waypoints(2)
-        for w in waypoints:
-            world.world.debug.draw_string(w.transform.location, 'O', draw_shadow=False,
-                                       color=carla.Color(r=255, g=0, b=0), life_time=120.0,
-                                       persistent_lines=True)
+        #waypoints = world.map.generate_waypoints(2)
 
         # if args.agent == "Roaming":
         #     agent = RoamingAgent(world.player);
         # else:
         #     agent = BasicAgent(world.player);
-        agent = RoamingAgent(world.player);
+
+        dest = carla.Location(x=7.8, y=-190, z=30)
+        
+        agent = RoamingAgent(world.player, dest);
         
         clock = pygame.time.Clock()
         while True:
@@ -859,7 +868,8 @@ def game_loop(args):
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
-            control = agent.run_step()
+            control = agent.run_step(dest)
+            print("throttle: " + str(control.throttle))
             control.manual_gear_shift = False
             world.player.apply_control(control)
 

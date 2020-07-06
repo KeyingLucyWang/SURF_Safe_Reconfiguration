@@ -12,8 +12,8 @@ The agent also responds to traffic lights. """
 #from agents.navigation.agent import Agent, AgentState
 #from agents.navigation.local_planner import LocalPlanner
 
-from SURF_Safe_Reconfiguration.roaming_agent.agent import Agent, AgentState
-from agents.navigation.local_planner import LocalPlanner
+from agents.navigation.agent import Agent, AgentState
+from route_planner import LocalPlanner
 
 
 class RoamingAgent(Agent):
@@ -24,7 +24,7 @@ class RoamingAgent(Agent):
     This agent respects traffic lights and other vehicles.
     """
 
-    def __init__(self, vehicle):
+    def __init__(self, vehicle, dest):
         """
 
         :param vehicle: actor to apply to local planner logic onto
@@ -33,9 +33,9 @@ class RoamingAgent(Agent):
 
         self._proximity_threshold = 10.0  # meters
         self._state = AgentState.NAVIGATING
-        self._local_planner = LocalPlanner(self._vehicle)
+        self._local_planner = LocalPlanner(self._vehicle, dest)
 
-    def run_step(self, debug=False):
+    def run_step(self, dest, debug=False):
         """
         Execute one step of navigation.
         :return: carla.VehicleControl
@@ -70,9 +70,11 @@ class RoamingAgent(Agent):
 
         if hazard_detected:
             control = self.emergency_stop()
+            print("hazard_detected")
         else:
             self._state = AgentState.NAVIGATING
             # standard local planner behavior
-            control = self._local_planner.run_step()
+            control = self._local_planner.run_step(dest)
+            #print("roaming agent control:" + str(control.throttle))
 
         return control
