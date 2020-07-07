@@ -33,6 +33,7 @@ class RoamingAgent(Agent):
 
         self._proximity_threshold = 10.0  # meters
         self._state = AgentState.NAVIGATING
+
         self._local_planner = LocalPlanner(self._vehicle, dest)
 
     def run_step(self, dest, debug=False):

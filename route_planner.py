@@ -107,10 +107,12 @@ class LocalPlanner(object):
 
         # parameters overload
         if opt_dict:
+            print("opt_dict is passed into route_planner")
             if 'dt' in opt_dict:
                 self._dt = opt_dict['dt']
             if 'target_speed' in opt_dict:
                 self._target_speed = opt_dict['target_speed']
+                print("target speed modified to " + str(self._target_speed))
             if 'sampling_radius' in opt_dict:
                 self._sampling_radius = self._target_speed * \
                     opt_dict['sampling_radius'] / 3.6
@@ -156,7 +158,7 @@ class LocalPlanner(object):
             next_waypoints = list(last_waypoint.next(self._sampling_radius))
 
             if len(next_waypoints) == 1:
-                print("only one waypoint available")
+                #print("only one waypoint available")
                 # only one option available ==> lanefollowing
                 next_waypoint = next_waypoints[0]
                 road_option = RoadOption.LANEFOLLOW
@@ -165,29 +167,35 @@ class LocalPlanner(object):
                 road_options_list = _retrieve_options(
                     next_waypoints, last_waypoint)
                 
-                print("choosing waypoints")
+                location = self._current_waypoint.transform.location
+                #print("choosing waypoints at x={}, y={}".format(location.x, location.y))
 
                 min_dist = -1
                 road_option = RoadOption.LANEFOLLOW
-
-                for option in road_options_list:
-                    if option == RoadOption.LEFT:
-                        print("left")
-                    elif option == RoadOption.RIGHT:
-                        print("right")
-                    elif option == RoadOption.LANEFOLLOW:
-                        print("follow")
                 
-                    next_waypoint = next_waypoints[road_options_list.index(
-                        option)]
+                for option in road_options_list:
+                #     if option == RoadOption.LEFT:
+                #         print("left")
+                #     elif option == RoadOption.RIGHT:
+                #         print("right")
+                #     elif option == RoadOption.LANEFOLLOW:
+                #         print("follow")
+                    
+                    next_waypoint = next_waypoints[road_options_list.index(option)]
 
                     dist = dest.distance(next_waypoint.transform.location)
 
                     if min_dist < 0 or dist < min_dist:
                         road_option = option
                         min_dist = dist
-                #road_option = random.choice(road_options_list)
-            
+                    
+                    #road_option = random.choice(road_options_list)
+                # else:
+                #     next_waypoint = next_waypoints[0] # default to lanefollow
+
+                print("final road option: " + str(road_option))
+                next_waypoint = next_waypoints[road_options_list.index(road_option)]
+                
             self._waypoints_queue.append((next_waypoint, road_option))
 
     def set_global_plan(self, current_plan):
@@ -239,8 +247,14 @@ class LocalPlanner(object):
         self._current_waypoint = self._map.get_waypoint(self._vehicle.get_location())
         # target waypoint
         self.target_waypoint, self._target_road_option = self._waypoint_buffer[0]
+
+        # set the target speed
+        # speed_limit = self._vehicle.get_speed_limit()
+        # self.set_speed(speed_limit-10)
+        self.set_speed(30)
+
         # move using PID controllers
-        #print("moving using PID controllers")
+        #print("target_speed: " + str(self._target_speed))
         control = self._vehicle_controller.run_step(self._target_speed, self.target_waypoint)
         
         # purge the queue of obsolete waypoints

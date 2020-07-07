@@ -818,6 +818,11 @@ class CameraManager(object):
         if self.recording:
             image.save_to_disk('_out/%08d' % image.frame)
 
+def in_proximity(location, dest):
+    # allow inaccuracy of up to 5 meters
+    error = 10
+    return (abs(location.x - dest.x) <= error) and (abs(location.y - dest.y) <= error)
+
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
@@ -853,9 +858,9 @@ def game_loop(args):
         # else:
         #     agent = BasicAgent(world.player);
 
-        dest = carla.Location(x=7.8, y=-190, z=30)
-        
-        agent = RoamingAgent(world.player, dest);
+        dest = carla.Location(x=222, y=-300, z=30)
+
+        agent = RoamingAgent(world.player, dest)
         
         clock = pygame.time.Clock()
         while True:
@@ -869,8 +874,15 @@ def game_loop(args):
             world.render(display)
             pygame.display.flip()
             control = agent.run_step(dest)
-            print("throttle: " + str(control.throttle))
+            # print("throttle: " + str(control.throttle))
             control.manual_gear_shift = False
+
+            # stop the vehicle once it reaches the set destination
+            location = world.player.get_location()
+            #print("player location: x={}, y={}, z={}".format(location.x, location.y, location.z))
+            #print("destination: x={}, y={}, z={}".format(dest.x, dest.y, dest.z))
+            if(in_proximity(location, dest)):
+                control = agent.emergency_stop()
             world.player.apply_control(control)
 
     finally:
