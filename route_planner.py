@@ -167,35 +167,37 @@ class LocalPlanner(object):
                 road_options_list = _retrieve_options(
                     next_waypoints, last_waypoint)
                 
-                location = self._current_waypoint.transform.location
+                #location = self._current_waypoint.transform.location
                 #print("choosing waypoints at x={}, y={}".format(location.x, location.y))
 
                 min_dist = -1
                 road_option = RoadOption.LANEFOLLOW
+                next_waypoint = next_waypoints[0]
                 
-                for option in road_options_list:
-                #     if option == RoadOption.LEFT:
-                #         print("left")
-                #     elif option == RoadOption.RIGHT:
-                #         print("right")
-                #     elif option == RoadOption.LANEFOLLOW:
-                #         print("follow")
-                    
-                    next_waypoint = next_waypoints[road_options_list.index(option)]
+                if(self._current_waypoint.is_junction):
+                    print("vehicle is at a junction")
+                    for option in road_options_list:
+                    #     if option == RoadOption.LEFT:
+                    #         print("left")
+                    #     elif option == RoadOption.RIGHT:
+                    #         print("right")
+                    #     elif option == RoadOption.LANEFOLLOW:
+                    #         print("follow")
+                        next_waypoint = next_waypoints[road_options_list.index(option)]
 
-                    dist = dest.distance(next_waypoint.transform.location)
+                        dist = dest.distance(next_waypoint.transform.location)
 
-                    if min_dist < 0 or dist < min_dist:
-                        road_option = option
-                        min_dist = dist
+                        if min_dist < 0 or dist < min_dist:
+                            road_option = option
+                            min_dist = dist
                     
                     #road_option = random.choice(road_options_list)
-                # else:
-                #     next_waypoint = next_waypoints[0] # default to lanefollow
+                    #else:
+                    #next_waypoint = next_waypoints[0] # default to lanefollow
 
-                print("final road option: " + str(road_option))
-                next_waypoint = next_waypoints[road_options_list.index(road_option)]
-                
+                    #print("final road option: " + str(road_option))
+                    next_waypoint = next_waypoints[road_options_list.index(road_option)]
+
             self._waypoints_queue.append((next_waypoint, road_option))
 
     def set_global_plan(self, current_plan):
@@ -249,9 +251,14 @@ class LocalPlanner(object):
         self.target_waypoint, self._target_road_option = self._waypoint_buffer[0]
 
         # set the target speed
-        # speed_limit = self._vehicle.get_speed_limit()
-        # self.set_speed(speed_limit-10)
-        self.set_speed(30)
+        speed_limit = self._vehicle.get_speed_limit()
+        #set highway driving speed to 40 kmh
+        if(speed_limit > 30):
+            self.set_speed(40)
+        # otherwise, set driving speed to 20 kmh
+        else:
+            self.set_speed(20)
+        #self.set_speed(30)
 
         # move using PID controllers
         #print("target_speed: " + str(self._target_speed))
@@ -270,7 +277,6 @@ class LocalPlanner(object):
                 self._waypoint_buffer.popleft()
 
         # if debug:
-        #     print("here")
         draw_waypoints(self._vehicle.get_world(), [self.target_waypoint], self._vehicle.get_location().z + 1.0)
     
         # if self._target_road_option != RoadOption.LANEFOLLOW not current_waypoint.is_intersection:

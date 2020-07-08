@@ -111,6 +111,9 @@ try:
     from pygame.locals import K_w
     from pygame.locals import K_MINUS
     from pygame.locals import K_EQUALS
+
+    from pygame.locals import K_t
+
 except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
 
@@ -262,6 +265,10 @@ class World(object):
 class KeyboardControl(object):
     def __init__(self, world, start_in_autopilot):
         self._autopilot_enabled = start_in_autopilot
+
+        self._manual_input = False
+        self._transition_mode = False
+
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
             world.player.set_autopilot(self._autopilot_enabled)
@@ -334,6 +341,14 @@ class KeyboardControl(object):
                     else:
                         world.recording_start += 1
                     world.hud.notification("Recording start time is %d" % (world.recording_start))
+
+                elif event.key == K_t:
+                    #request to enter transition period
+                    print("driver requested to enter manual control mode")
+                    self._transition_mode = True
+                    # if not driver input in 5 seconds --> slow down and come to a full stop
+                    # during the transition period --> slow down to a reasonable speed to prepare for the transition (5 kmh)
+
                 if isinstance(self._control, carla.VehicleControl):
                     if event.key == K_q:
                         self._control.gear = 1 if self._control.reverse else -1
@@ -354,8 +369,11 @@ class KeyboardControl(object):
             if isinstance(self._control, carla.VehicleControl):
                 keys = pygame.key.get_pressed()
                 if sum(keys) > 0:
+                    print("received manual input, disabling automatic control...")
+                    self._manual_input = True
                     self._parse_vehicle_keys(keys, clock.get_time())
                     self._control.reverse = self._control.gear < 0
+                    #print("steer: " + str(self._control.steer))
                     world.player.apply_control(self._control)
             elif isinstance(self._control, carla.WalkerControl):
                 self._parse_walker_keys(pygame.key.get_pressed(), clock.get_time())
@@ -365,15 +383,21 @@ class KeyboardControl(object):
         self._control.throttle = 1.0 if keys[K_UP] or keys[K_w] else 0.0
         steer_increment = 5e-4 * milliseconds
         if keys[K_LEFT] or keys[K_a]:
+            #print("turning left")
             self._steer_cache -= steer_increment
+            #print("steer_cache: " + str(self._steer_cache))
         elif keys[K_RIGHT] or keys[K_d]:
+            #print("turning right")
             self._steer_cache += steer_increment
+            #print("steer_cache: " + str(self._steer_cache))
         else:
             self._steer_cache = 0.0
+            #print("steer_cache set to 0")
         self._steer_cache = min(0.7, max(-0.7, self._steer_cache))
         self._control.steer = round(self._steer_cache, 1)
         self._control.brake = 1.0 if keys[K_DOWN] or keys[K_s] else 0.0
         self._control.hand_brake = keys[K_SPACE]
+        #print("steer: " + str(self._control.steer))
 
     def _parse_walker_keys(self, keys, milliseconds):
         self._control.speed = 0.0
@@ -818,16 +842,42 @@ class CameraManager(object):
         if self.recording:
             image.save_to_disk('_out/%08d' % image.frame)
 
-def in_proximity(location, dest):
-    # allow inaccuracy of up to 5 meters
-    error = 10
+# ==============================================================================
+# -- game_loop() helpers -------------------------------------------------------
+# ==============================================================================
+
+def in_proximity(agent, location, dest):
+    # allow inaccuracy of up to 10 meters
+    # error = 10
+    error = agent._proximity_threshold
     return (abs(location.x - dest.x) <= error) and (abs(location.y - dest.y) <= error)
 
+def check_AD_conditions(world):
+    # check speed limit and weather
+    # use speed limit to determine whether the vehicle is on the highway
+    if (world.player.get_speed_limit() == 30):
+        return False
+    
+    weather_params = world.get_weather()
+    cloudiness_threshold = 50
+    precipitation_threshold = 50
+    precipitation_deposits_threshold = 50
+    wind_intensity_threshold = 50
+    #sun_azimuth_angle
+    #sun_altitude_angle
+
+    # check if any weather condition requirement is not satisfied
+    if (weather_params.cloudiness > cloudiness_threshold
+        or weather_params.precipitation > precipitation_threshold
+        or weather_params.precipitation_deposits > precipitation_deposits_threshold
+        or weather_params.wind_intensity > wind_intensity_threshold):
+        return False
+
+    return True
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
 # ==============================================================================
-
 
 def game_loop(args):
     pygame.init()
@@ -864,26 +914,31 @@ def game_loop(args):
         
         clock = pygame.time.Clock()
         while True:
-            #clock.tick_busy_loop(60)
+            if(controller._manual_input):
+                clock.tick_busy_loop(60)
+    
             if controller.parse_events(client, world, clock):
                 return
             
-            world.world.wait_for_tick(10.0)
+            world.world.wait_for_tick(2.0)
 
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
-            control = agent.run_step(dest)
-            # print("throttle: " + str(control.throttle))
-            control.manual_gear_shift = False
+            if(not controller._manual_input):
+                if(not check_AD_conditions(world)):
+                    print("AD conditions not satisfied, preparing to switch to manual mdoe")
+                control = agent.run_step(dest)
+                # print("throttle: " + str(control.throttle))
+                control.manual_gear_shift = False
 
-            # stop the vehicle once it reaches the set destination
-            location = world.player.get_location()
-            #print("player location: x={}, y={}, z={}".format(location.x, location.y, location.z))
-            #print("destination: x={}, y={}, z={}".format(dest.x, dest.y, dest.z))
-            if(in_proximity(location, dest)):
-                control = agent.emergency_stop()
-            world.player.apply_control(control)
+                # stop the vehicle once it reaches the set destination
+                location = world.player.get_location()
+                #print("player location: x={}, y={}, z={}".format(location.x, location.y, location.z))
+                #print("destination: x={}, y={}, z={}".format(dest.x, dest.y, dest.z))
+                if(in_proximity(agent, location, dest)):
+                    control = agent.emergency_stop()
+                world.player.apply_control(control)
 
     finally:
 
