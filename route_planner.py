@@ -175,7 +175,7 @@ class LocalPlanner(object):
                 next_waypoint = next_waypoints[0]
                 
                 if(self._current_waypoint.is_junction):
-                    print("vehicle is at a junction")
+                    #print("vehicle is at a junction")
                     for option in road_options_list:
                     #     if option == RoadOption.LEFT:
                     #         print("left")
@@ -254,7 +254,7 @@ class LocalPlanner(object):
         speed_limit = self._vehicle.get_speed_limit()
         #set highway driving speed to 40 kmh
         if(speed_limit > 30):
-            self.set_speed(40)
+            self.set_speed(30)
         # otherwise, set driving speed to 20 kmh
         else:
             self.set_speed(20)

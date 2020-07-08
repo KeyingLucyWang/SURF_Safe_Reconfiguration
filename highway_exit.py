@@ -263,11 +263,11 @@ class World(object):
 
 
 class KeyboardControl(object):
-    def __init__(self, world, start_in_autopilot):
+    def __init__(self, world, start_in_autopilot, control_mode):
         self._autopilot_enabled = start_in_autopilot
 
         self._manual_input = False
-        self._transition_mode = False
+        self._control_mode = control_mode
 
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
@@ -344,8 +344,16 @@ class KeyboardControl(object):
 
                 elif event.key == K_t:
                     #request to enter transition period
-                    print("driver requested to enter manual control mode")
-                    self._transition_mode = True
+                    if(self._control_mode == "Manual"):
+                        print("driver requested to enter autonomous control mode")
+                        if(check_AD_conditions(world)):
+                            self._control_mode = "Autonomous"
+                    elif(self._control_mode == "Autonomous"):
+                        print("driver requested to enter manual control mode")
+                        self._control_mode = "Manual"
+                        # awaiting manual input
+                        self._manual_input = False
+                    
                     # if not driver input in 5 seconds --> slow down and come to a full stop
                     # during the transition period --> slow down to a reasonable speed to prepare for the transition (5 kmh)
 
@@ -368,9 +376,10 @@ class KeyboardControl(object):
         if not self._autopilot_enabled:
             if isinstance(self._control, carla.VehicleControl):
                 keys = pygame.key.get_pressed()
-                if sum(keys) > 0:
-                    print("received manual input, disabling automatic control...")
-                    self._manual_input = True
+                #print(self._manual_input)
+                if self._control_mode == "Manual": #sum(keys) > 0 and self._manual_input:
+                    #print("received manual input, disabling automatic control...")
+                    # self._manual_input = True
                     self._parse_vehicle_keys(keys, clock.get_time())
                     self._control.reverse = self._control.gear < 0
                     #print("steer: " + str(self._control.steer))
@@ -380,14 +389,22 @@ class KeyboardControl(object):
                 world.player.apply_control(self._control)
 
     def _parse_vehicle_keys(self, keys, milliseconds):
-        self._control.throttle = 1.0 if keys[K_UP] or keys[K_w] else 0.0
+        # self._control.throttle = 1.0 if keys[K_UP] or keys[K_w] else 0.0
+        if keys[K_UP] or keys[K_w]:
+            self._manual_input = True
+            self._control.throttle = 1.0
+        else:
+            self._control.throttle = 0.0
+        
         steer_increment = 5e-4 * milliseconds
         if keys[K_LEFT] or keys[K_a]:
             #print("turning left")
+            self._manual_input = True
             self._steer_cache -= steer_increment
             #print("steer_cache: " + str(self._steer_cache))
         elif keys[K_RIGHT] or keys[K_d]:
             #print("turning right")
+            self._manual_input = True
             self._steer_cache += steer_increment
             #print("steer_cache: " + str(self._steer_cache))
         else:
@@ -395,7 +412,12 @@ class KeyboardControl(object):
             #print("steer_cache set to 0")
         self._steer_cache = min(0.7, max(-0.7, self._steer_cache))
         self._control.steer = round(self._steer_cache, 1)
-        self._control.brake = 1.0 if keys[K_DOWN] or keys[K_s] else 0.0
+        
+        if keys[K_DOWN] or keys[K_s]:
+            self._control.brake = 1.0 
+            self._manual_input = True
+        else:
+            self._control.brake = 0.0
         self._control.hand_brake = keys[K_SPACE]
         #print("steer: " + str(self._control.steer))
 
@@ -409,7 +431,7 @@ class KeyboardControl(object):
         if keys[K_RIGHT] or keys[K_d]:
             self._control.speed = .01
             self._rotation.yaw += 0.08 * milliseconds
-        if keys[K_UP] or keys[K_w]:
+        if keys[K_UP] or keys[K_w]:   
             self._control.speed = 3.333 if pygame.key.get_mods() & KMOD_SHIFT else 2.778
         self._control.jump = keys[K_SPACE]
         self._rotation.yaw = round(self._rotation.yaw, 1)
@@ -855,19 +877,25 @@ def in_proximity(agent, location, dest):
 def check_AD_conditions(world):
     # check speed limit and weather
     # use speed limit to determine whether the vehicle is on the highway
-    if (world.player.get_speed_limit() == 30):
-        return False
+    # if (world.player.get_speed_limit() == 30):
+    #     return False
     
-    weather_params = world.get_weather()
-    cloudiness_threshold = 50
-    precipitation_threshold = 50
-    precipitation_deposits_threshold = 50
-    wind_intensity_threshold = 50
+    weather_params = world.world.get_weather()
+    #print(str(weather_params))
+    # print ("cloudiness: {}, precipitation: {}, precipitation_deposits {}, wind_intensity: {}".format(
+    #     weather_params.cloudiness, weather_params.precipitation,
+    #     weather_params.precipitation_deposits, weather_params.wind_intensity
+    #     )
+    # )
+    cloudiness_threshold = 20
+    precipitation_threshold = 20
+    precipitation_deposits_threshold = 20
+    wind_intensity_threshold = 20
     #sun_azimuth_angle
     #sun_altitude_angle
 
-    # check if any weather condition requirement is not satisfied
-    if (weather_params.cloudiness > cloudiness_threshold
+    #check if any weather condition requirement is not satisfied
+    if (weather_params.cloudyness > cloudiness_threshold
         or weather_params.precipitation > precipitation_threshold
         or weather_params.precipitation_deposits > precipitation_deposits_threshold
         or weather_params.wind_intensity > wind_intensity_threshold):
@@ -898,8 +926,10 @@ def game_loop(args):
         hud = HUD(args.width, args.height)
         world = World(client.get_world(), hud, args)
 
+        # control mode: Autonomous, Manual, Transition
+        starting_mode = "Manual"
         
-        controller = KeyboardControl(world, False)
+        controller = KeyboardControl(world, False, starting_mode)
 
         #waypoints = world.map.generate_waypoints(2)
 
@@ -925,20 +955,24 @@ def game_loop(args):
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
-            if(not controller._manual_input):
+            if(controller._control_mode == "Autonomous"): #not controller._manual_input):
+                #print("enter autonomous mode")
                 if(not check_AD_conditions(world)):
-                    print("AD conditions not satisfied, preparing to switch to manual mdoe")
-                control = agent.run_step(dest)
-                # print("throttle: " + str(control.throttle))
-                control.manual_gear_shift = False
+                    print("AD conditions not satisfied, preparing to switch to manual mode")
+                    controller._control_mode = "Manual"
+                else:  
+                    #print("autonomous agent run step")
+                    control = agent.run_step(dest)
+                    # print("throttle: " + str(control.throttle))
+                    control.manual_gear_shift = False
 
-                # stop the vehicle once it reaches the set destination
-                location = world.player.get_location()
-                #print("player location: x={}, y={}, z={}".format(location.x, location.y, location.z))
-                #print("destination: x={}, y={}, z={}".format(dest.x, dest.y, dest.z))
-                if(in_proximity(agent, location, dest)):
-                    control = agent.emergency_stop()
-                world.player.apply_control(control)
+                    # stop the vehicle once it reaches the set destination
+                    location = world.player.get_location()
+                    #print("player location: x={}, y={}, z={}".format(location.x, location.y, location.z))
+                    #print("destination: x={}, y={}, z={}".format(dest.x, dest.y, dest.z))
+                    if(in_proximity(agent, location, dest)):
+                        control = agent.emergency_stop()
+                    world.player.apply_control(control)
 
     finally:
 
