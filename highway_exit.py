@@ -2,44 +2,9 @@
 
 # Copyright (c) 2019 Computer Vision Center (CVC) at the Universitat Autonoma de
 # Barcelona (UAB).
-#
-# This work is licensed under the terms of the MIT license.
-# For a copy, see <https://opensource.org/licenses/MIT>.
 
-# Allows controlling a vehicle with a keyboard. For a simpler and more
-# documented example, please take a look at tutorial.py.
-
-"""
-Welcome to CARLA manual control.
-
-Use ARROWS or WASD keys for control.
-
-    W            : throttle
-    S            : brake
-    AD           : steer
-    Q            : toggle reverse
-    Space        : hand-brake
-    P            : toggle autopilot
-    M            : toggle manual transmission
-    ,/.          : gear up/down
-
-    TAB          : change sensor position
-    `            : next sensor
-    [1-9]        : change to sensor [1-9]
-    C            : change weather (Shift+C reverse)
-    Backspace    : change vehicle
-
-    R            : toggle recording images to disk
-
-    CTRL + R     : toggle recording of simulation (replacing any previous)
-    CTRL + P     : start replaying last recorded simulation
-    CTRL + +     : increments the start time of the replay by 1 second (+SHIFT = 10 seconds)
-    CTRL + -     : decrements the start time of the replay by 1 second (+SHIFT = 10 seconds)
-
-    F1           : toggle HUD
-    H/?          : toggle help
-    ESC          : quit
-"""
+# Used automatic_control.py as the starter code
+# author: Keying (Lucy) Wang
 
 from __future__ import print_function
 
@@ -52,6 +17,7 @@ from __future__ import print_function
 import glob
 import os
 import sys
+import time
 
 try:
     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
@@ -132,9 +98,9 @@ except IndexError:
 
 import carla
 from carla import ColorConverter as cc
-# from agents.navigation.roaming_agent import RoamingAgent
-# from agents.navigation.basic_agent import BasicAgent
 from roaming_agent.roaming_agent import RoamingAgent
+
+# import spawn_npc_at_location
 # ==============================================================================
 # -- Global functions ----------------------------------------------------------
 # ==============================================================================
@@ -201,6 +167,7 @@ class World(object):
             spawn_point.rotation.pitch = 0.0
             self.destroy()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+
         while self.player is None:
             # spawn_points = self.map.get_spawn_points()
             # spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
@@ -217,6 +184,13 @@ class World(object):
             #waypoint = self.map.get_waypoint(carla.Location(x=48, y=330, z=30))
             self.player = self.world.spawn_actor(blueprint, waypoint.transform)
             #self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+            
+            # spawn npc vehicle to the (1)right or (2)left of the ego vehicle
+            # direction = "left"
+            # if not spawn_vehicle(self.world, direction):
+            #     print("failed to spawn npc vehicle")
+            
+
         # Set up the sensors.
         self.collision_sensor = CollisionSensor(self.player, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.player, self.hud)
@@ -268,6 +242,7 @@ class KeyboardControl(object):
 
         self._manual_input = False
         self._control_mode = control_mode
+        self._start_transition = None
 
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
@@ -346,13 +321,22 @@ class KeyboardControl(object):
                     #request to enter transition period
                     if(self._control_mode == "Manual"):
                         print("driver requested to enter autonomous control mode")
+                        #only enter autonomous mode if 
                         if(check_AD_conditions(world)):
+                            self._manual_input = False
                             self._control_mode = "Autonomous"
+                        else:
+                            print("AD conditions not satisfied; Failed to enter autonomous mode")
                     elif(self._control_mode == "Autonomous"):
                         print("driver requested to enter manual control mode")
-                        self._control_mode = "Manual"
+                        # self._control_mode = "Manual"
+                        self._control_mode = "Transition"
                         # awaiting manual input
                         self._manual_input = False
+                        # mark the start time of the transition period 
+                        self._start_transition = time.time()
+                        print("transition start time: " + str(self._start_transition))
+
                     
                     # if not driver input in 5 seconds --> slow down and come to a full stop
                     # during the transition period --> slow down to a reasonable speed to prepare for the transition (5 kmh)
@@ -377,13 +361,26 @@ class KeyboardControl(object):
             if isinstance(self._control, carla.VehicleControl):
                 keys = pygame.key.get_pressed()
                 #print(self._manual_input)
-                if self._control_mode == "Manual": #sum(keys) > 0 and self._manual_input:
+                if (self._control_mode == "Transition"):
+                    print("Transition mode")
                     #print("received manual input, disabling automatic control...")
                     # self._manual_input = True
                     self._parse_vehicle_keys(keys, clock.get_time())
                     self._control.reverse = self._control.gear < 0
                     #print("steer: " + str(self._control.steer))
+
+                    #apply manual control in transition mode if manual input is detected
+                    #                                     or if the time limit of the transition period is exceeded
+                    if(self._manual_input or (time.time() - self._start_transition > 10)):
+                        print("transition end time: " + str(time.time()))
+                        self._control_mode = "Manual"
+                        # world.player.apply_control(self._control)
+                if (self._control_mode == "Manual"):
+                    #print("Manual mode")
+                    self._parse_vehicle_keys(keys, clock.get_time())
+                    self._control.reverse = self._control.gear < 0
                     world.player.apply_control(self._control)
+    
             elif isinstance(self._control, carla.WalkerControl):
                 self._parse_walker_keys(pygame.key.get_pressed(), clock.get_time())
                 world.player.apply_control(self._control)
@@ -457,7 +454,7 @@ class HUD(object):
         mono = pygame.font.match_font(mono)
         self._font_mono = pygame.font.Font(mono, 14)
         self._notifications = FadingText(font, (width, 40), (0, height - 40))
-        self.help = HelpText(pygame.font.Font(mono, 24), width, height)
+        #self.help = HelpText(pygame.font.Font(mono, 24), width, height)
         self.server_fps = 0
         self.frame = 0
         self.simulation_time = 0
@@ -602,7 +599,7 @@ class HUD(object):
                     display.blit(surface, (8, v_offset))
                 v_offset += 18
         self._notifications.render(display)
-        self.help.render(display)
+        #self.help.render(display)
 
 
 # ==============================================================================
@@ -877,8 +874,8 @@ def in_proximity(agent, location, dest):
 def check_AD_conditions(world):
     # check speed limit and weather
     # use speed limit to determine whether the vehicle is on the highway
-    # if (world.player.get_speed_limit() == 30):
-    #     return False
+    if (world.player.get_speed_limit() == 30):
+        return False
     
     weather_params = world.world.get_weather()
     #print(str(weather_params))
@@ -944,7 +941,7 @@ def game_loop(args):
         
         clock = pygame.time.Clock()
         while True:
-            if(controller._manual_input):
+            if(controller._control_mode != "Autonomous" and controller._manual_input):
                 clock.tick_busy_loop(60)
     
             if controller.parse_events(client, world, clock):
@@ -955,11 +952,15 @@ def game_loop(args):
             world.tick(clock)
             world.render(display)
             pygame.display.flip()
-            if(controller._control_mode == "Autonomous"): #not controller._manual_input):
+
+            if(controller._control_mode != "Manual"): #not controller._manual_input):
                 #print("enter autonomous mode")
-                if(not check_AD_conditions(world)):
+                if(controller._control_mode == "Autonomous" and not check_AD_conditions(world)):
                     print("AD conditions not satisfied, preparing to switch to manual mode")
-                    controller._control_mode = "Manual"
+                    controller._control_mode = "Transition"
+
+                    # mark the start time of the transition period 
+                    controller._start_transition = time.time()
                 else:  
                     #print("autonomous agent run step")
                     control = agent.run_step(dest)
@@ -972,7 +973,9 @@ def game_loop(args):
                     #print("destination: x={}, y={}, z={}".format(dest.x, dest.y, dest.z))
                     if(in_proximity(agent, location, dest)):
                         control = agent.emergency_stop()
-                    world.player.apply_control(control)
+                    
+                    if(not controller._manual_input):
+                        world.player.apply_control(control)
 
     finally:
 

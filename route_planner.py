@@ -3,8 +3,8 @@
 # Copyright (c) 2018 Intel Labs.
 # authors: German Ros (german.ros@intel.com)
 #
-# This work is licensed under the terms of the MIT license.
-# For a copy, see <https://opensource.org/licenses/MIT>.
+# Used local_planner.py as the starter code
+# Modified by Keying (Lucy) Wang
 
 """ This module contains a local planner to perform low-level waypoint following based on PID controllers. """
 

@@ -3,14 +3,11 @@
 # Copyright (c) 2018 Intel Labs.
 # authors: German Ros (german.ros@intel.com)
 #
-# This work is licensed under the terms of the MIT license.
-# For a copy, see <https://opensource.org/licenses/MIT>.
+# Used local_planner.py as the starter code
+# Modified by Keying (Lucy) Wang
 
 """ This module implements an agent that roams around a track following random waypoints and avoiding other vehicles.
 The agent also responds to traffic lights. """
-
-#from agents.navigation.agent import Agent, AgentState
-#from agents.navigation.local_planner import LocalPlanner
 
 from agents.navigation.agent import Agent, AgentState
 from route_planner import LocalPlanner
