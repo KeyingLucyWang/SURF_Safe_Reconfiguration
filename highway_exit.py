@@ -98,7 +98,7 @@ except IndexError:
 
 import carla
 from carla import ColorConverter as cc
-from roaming_agent.roaming_agent import RoamingAgent
+from roaming_agent import RoamingAgent
 
 # import spawn_npc_at_location
 # ==============================================================================
