@@ -79,6 +79,7 @@ try:
     from pygame.locals import K_EQUALS
 
     from pygame.locals import K_t
+    from pygame.locals import K_y
 
 except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
@@ -99,6 +100,9 @@ except IndexError:
 import carla
 from carla import ColorConverter as cc
 from roaming_agent import RoamingAgent
+
+# import curses library to build an interactive asynchronous user interface
+# import curses 
 
 # import spawn_npc_at_location
 # ==============================================================================
@@ -243,6 +247,12 @@ class KeyboardControl(object):
         self._manual_input = False
         self._control_mode = control_mode
         self._start_transition = None
+        self._transition_prev_time = None
+        self._conditions_satisfied = False
+        self._request_sent = False
+        self._allow_switch = False
+        self._start_request_period = None
+
 
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
@@ -335,12 +345,20 @@ class KeyboardControl(object):
                         self._manual_input = False
                         # mark the start time of the transition period 
                         self._start_transition = time.time()
+                        self._transition_prev_time = 10
                         print("transition start time: " + str(self._start_transition))
 
                     
                     # if not driver input in 5 seconds --> slow down and come to a full stop
                     # during the transition period --> slow down to a reasonable speed to prepare for the transition (5 kmh)
 
+                elif event.key == K_y:
+                    if(self._conditions_satisfied and self._request_sent and self._allow_switch):
+                        self._control_mode = "Autonomous"
+                        print("switched to autonomos mode")
+                        # self._request_sent = True
+                    
+                
                 if isinstance(self._control, carla.VehicleControl):
                     if event.key == K_q:
                         self._control.gear = 1 if self._control.reverse else -1
@@ -362,7 +380,6 @@ class KeyboardControl(object):
                 keys = pygame.key.get_pressed()
                 #print(self._manual_input)
                 if (self._control_mode == "Transition"):
-                    print("Transition mode")
                     #print("received manual input, disabling automatic control...")
                     # self._manual_input = True
                     self._parse_vehicle_keys(keys, clock.get_time())
@@ -371,12 +388,25 @@ class KeyboardControl(object):
 
                     #apply manual control in transition mode if manual input is detected
                     #                                     or if the time limit of the transition period is exceeded
-                    if(self._manual_input or (time.time() - self._start_transition > 10)):
-                        print("transition end time: " + str(time.time()))
+                    cur_time = int(time.time() - self._start_transition)
+                    if(cur_time != self._transition_prev_time):
+                            print("Time remaining: {}".format(10 - int(time.time() - self._start_transition)))
+                            self._transition_prev_time = cur_time
+                    if(self._manual_input or (cur_time > 10)):
+                        print("transition end time: {}".format(int(time.time())))
                         self._control_mode = "Manual"
+                        self._allow_switch = False
+                        self._request_sent = False
                         # world.player.apply_control(self._control)
                 if (self._control_mode == "Manual"):
                     #print("Manual mode")
+                    
+                    #if a switch request has been sent to the driver
+                    if (self._conditions_satisfied and self._request_sent and 
+                        time.time() - self._start_request_period > 10 and self._allow_switch):
+                        print("request period ended")
+                        self._allow_switch = False
+
                     self._parse_vehicle_keys(keys, clock.get_time())
                     self._control.reverse = self._control.gear < 0
                     world.player.apply_control(self._control)
@@ -386,37 +416,35 @@ class KeyboardControl(object):
                 world.player.apply_control(self._control)
 
     def _parse_vehicle_keys(self, keys, milliseconds):
-        # self._control.throttle = 1.0 if keys[K_UP] or keys[K_w] else 0.0
         if keys[K_UP] or keys[K_w]:
-            self._manual_input = True
+            if(self._control_mode == "Transition"):
+                self._manual_input = True
             self._control.throttle = 1.0
         else:
             self._control.throttle = 0.0
         
         steer_increment = 5e-4 * milliseconds
         if keys[K_LEFT] or keys[K_a]:
-            #print("turning left")
-            self._manual_input = True
+            if(self._control_mode == "Transition"):
+                self._manual_input = True
             self._steer_cache -= steer_increment
-            #print("steer_cache: " + str(self._steer_cache))
         elif keys[K_RIGHT] or keys[K_d]:
-            #print("turning right")
-            self._manual_input = True
+            if(self._control_mode == "Transition"):
+                self._manual_input = True
             self._steer_cache += steer_increment
-            #print("steer_cache: " + str(self._steer_cache))
         else:
             self._steer_cache = 0.0
-            #print("steer_cache set to 0")
         self._steer_cache = min(0.7, max(-0.7, self._steer_cache))
         self._control.steer = round(self._steer_cache, 1)
+        print(str(self._control.steer))
         
         if keys[K_DOWN] or keys[K_s]:
             self._control.brake = 1.0 
-            self._manual_input = True
+            if(self._control_mode == "Transition"):
+                self._manual_input = True
         else:
             self._control.brake = 0.0
         self._control.hand_brake = keys[K_SPACE]
-        #print("steer: " + str(self._control.steer))
 
     def _parse_walker_keys(self, keys, milliseconds):
         self._control.speed = 0.0
@@ -454,7 +482,6 @@ class HUD(object):
         mono = pygame.font.match_font(mono)
         self._font_mono = pygame.font.Font(mono, 14)
         self._notifications = FadingText(font, (width, 40), (0, height - 40))
-        #self.help = HelpText(pygame.font.Font(mono, 24), width, height)
         self.server_fps = 0
         self.frame = 0
         self.simulation_time = 0
@@ -487,23 +514,11 @@ class HUD(object):
 
         exit_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Exit)
         entry_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Entry)
-        # parking_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Parking)
-        # border_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Border)
-        # sidewalk_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Sidewalk)
-        # biking_lane = world.map.get_waypoint(world.player.get_location(),True,carla.libcarla.LaneType.Biking)
 
         if(exit_lane != None):
             waypoint = exit_lane
         elif(entry_lane != None):
             waypoint = entry_lane
-        # elif(parking_lane != None):
-        #     waypoint = parking_lane;
-        # elif(border_lane != None):
-        #     waypoint = border_lane
-        # elif(sidewalk_lane != None):
-        #    waypoint = sidewalk_lane
-        # elif(biking_lane != None):
-        #     waypoint = biking_lane
         else: # driving_lane
             waypoint = world.map.get_waypoint(world.player.get_location())
 
@@ -900,6 +915,34 @@ def check_AD_conditions(world):
 
     return True
 
+# def send_mode_switch_request(seconds):
+#     def _get_response(stdscr):
+#         stdscr.clear()
+#         timeout = time.time() + seconds
+#         response = ""
+#         while time.time() <= timeout and response.lower() != "y":
+#             time_left = int(timeout - time.time())
+#             stdscr.addstr(0, 0, 'Countdown: {} {}'.format(time_left,
+#                                                           "*" * time_left + " " * seconds))
+#             # stdscr.addstr(2, 0, ' ' * 50)
+#             stdscr.addstr(2, 0, 'Your Input: {}'.format(response))
+#             stdscr.refresh()
+#             stdscr.timeout(100)
+#             code = stdscr.getch()
+#             stdscr.addstr(10, 0, 'Code: {}'.format(code))  # for debug only
+#             stdscr.refresh()
+#             if ord("y") == code:
+#                 response  = "y"
+#                 return True
+
+            # if code == 10 and s:  # newline
+            #     return int(s)
+
+            # if code == 127:  # backspace
+            #     s = s[:-1]
+
+    # return curses.wrapper(_get_response)
+
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
 # ==============================================================================
@@ -937,11 +980,11 @@ def game_loop(args):
 
         dest = carla.Location(x=222, y=-300, z=30)
 
-        agent = RoamingAgent(world.player, dest)
+        # agent = RoamingAgent(world.player, dest, controller._control_mode)
         
         clock = pygame.time.Clock()
         while True:
-            if(controller._control_mode != "Autonomous" and controller._manual_input):
+            if(controller._control_mode != "Autonomous"):# and controller._manual_input):
                 clock.tick_busy_loop(60)
     
             if controller.parse_events(client, world, clock):
@@ -953,6 +996,9 @@ def game_loop(args):
             world.render(display)
             pygame.display.flip()
 
+
+            #agent.update_agent_control(dest, controller._control_mode)
+            # print("agent control mode is " + str(agent._control_mode))
             if(controller._control_mode != "Manual"): #not controller._manual_input):
                 #print("enter autonomous mode")
                 if(controller._control_mode == "Autonomous" and not check_AD_conditions(world)):
@@ -962,6 +1008,7 @@ def game_loop(args):
                     # mark the start time of the transition period 
                     controller._start_transition = time.time()
                 else:  
+                    agent = RoamingAgent(world.player, dest)
                     #print("autonomous agent run step")
                     control = agent.run_step(dest)
                     # print("throttle: " + str(control.throttle))
@@ -971,11 +1018,45 @@ def game_loop(args):
                     location = world.player.get_location()
                     #print("player location: x={}, y={}, z={}".format(location.x, location.y, location.z))
                     #print("destination: x={}, y={}, z={}".format(dest.x, dest.y, dest.z))
+
                     if(in_proximity(agent, location, dest)):
                         control = agent.emergency_stop()
                     
-                    if(not controller._manual_input):
+                    if(controller._control_mode != "Transition" or not controller._manual_input):
                         world.player.apply_control(control)
+            else: 
+                # if controller control mode is manual, ask the driver 
+                # if they would like to switch into autonomous driving mode
+                assert(controller._control_mode == "Manual")
+                # give the driver 10 seconds to choose to mode transition
+                controller._conditions_satisfied = check_AD_conditions(world) 
+                if(controller._conditions_satisfied and not controller._request_sent and not controller._allow_switch):
+                    controller._start_request_period = time.time()
+                    controller._allow_switch = True
+                    controller._request_sent = True
+                    print("Press 'y' to switch into autonomous mode")
+                    prev_time = 10
+
+                # print switch request countdown time
+                if(controller._start_request_period != None and controller._allow_switch): 
+                    cur_time = int(time.time() - controller._start_request_period)
+                    if(cur_time != prev_time):
+                        print("Time remaining: {}".format(10 - int(time.time() - controller._start_request_period)))
+                        prev_time = cur_time
+
+
+
+                # if(check_AD_conditions(world) and not controller._request_sent):
+                #     controller._request_sent = True
+                    # if(send_mode_switch_request(10)):
+                    #     print("switch to autonomous mode")
+
+                # if(check_AD_conditions(world)):
+                #     response = input("Autonomous mode conditions satisfied.\nType 'y' to switch mode: ")
+                #     if(response.lower() == "y"):
+                #         controller._control_mode = "Autonomous"
+                #         controller._manual_input = False
+                #         print("switched into autonomous driving mode")
 
     finally:
 

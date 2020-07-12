@@ -3,7 +3,7 @@
 # Copyright (c) 2018 Intel Labs.
 # authors: German Ros (german.ros@intel.com)
 #
-# Used local_planner.py as the starter code
+# Used roaming_agent.py as the starter code
 # Modified by Keying (Lucy) Wang
 
 """ This module implements an agent that roams around a track following random waypoints and avoiding other vehicles.
@@ -31,7 +31,12 @@ class RoamingAgent(Agent):
         self._proximity_threshold = 10.0  # meters
         self._state = AgentState.NAVIGATING
 
+        # self._control_mode = control_mode
         self._local_planner = LocalPlanner(self._vehicle, dest)
+
+    def update_agent_control(self, dest, control_mode):
+        self._control_mode = control_mode
+        #self._local_planner.update_control_mode(dest, control_mode)
 
     def run_step(self, dest, debug=False):
         """

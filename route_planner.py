@@ -288,7 +288,6 @@ def _retrieve_options(list_waypoints, current_waypoint):
     """
     Compute the type of connection between the current active waypoint and the multiple waypoints present in
     list_waypoints. The result is encoded as a list of RoadOption enums.
-
     :param list_waypoints: list with the possible target waypoints in case of multiple options
     :param current_waypoint: current active waypoint
     :return: list of RoadOption enums representing the type of connection from the active waypoint to each
@@ -310,7 +309,6 @@ def _compute_connection(current_waypoint, next_waypoint):
     """
     Compute the type of topological connection between an active waypoint (current_waypoint) and a target waypoint
     (next_waypoint).
-
     :param current_waypoint: active waypoint
     :param next_waypoint: target waypoint
     :return: the type of topological connection encoded as a RoadOption enum:
