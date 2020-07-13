@@ -101,6 +101,9 @@ import carla
 from carla import ColorConverter as cc
 from roaming_agent import RoamingAgent
 
+from vehicle_detection import is_safe_from_vehicles
+from obstacle_detection import is_safe_from_obstacles
+
 # import curses library to build an interactive asynchronous user interface
 # import curses 
 
@@ -436,7 +439,7 @@ class KeyboardControl(object):
             self._steer_cache = 0.0
         self._steer_cache = min(0.7, max(-0.7, self._steer_cache))
         self._control.steer = round(self._steer_cache, 1)
-        print(str(self._control.steer))
+        # print(str(self._control.steer))
         
         if keys[K_DOWN] or keys[K_s]:
             self._control.brake = 1.0 
@@ -892,6 +895,18 @@ def check_AD_conditions(world):
     if (world.player.get_speed_limit() == 30):
         return False
     
+    (is_safe_vehicles, vehicle, dist) = is_safe_from_vehicles(world)
+    if (not is_safe_vehicles):
+        print("unsafe distance {}".format(dist))
+        print("unsafe vehicle: " + vehicle.type_id)
+        return False
+
+    (is_safe_obstacles, obstacle, dist) = is_safe_from_obstacles(world)
+    if (not is_safe_obstacles):
+        print("unsafe distance {}".format(dist))
+        print("unsafe obstacle: " + obstacle.type_id)
+        return False
+
     weather_params = world.world.get_weather()
     #print(str(weather_params))
     # print ("cloudiness: {}, precipitation: {}, precipitation_deposits {}, wind_intensity: {}".format(
@@ -1036,6 +1051,9 @@ def game_loop(args):
                     controller._request_sent = True
                     print("Press 'y' to switch into autonomous mode")
                     prev_time = 10
+
+                if(not controller._conditions_satisfied and controller._allow_switch):
+                    controller._allow_switch = False
 
                 # print switch request countdown time
                 if(controller._start_request_period != None and controller._allow_switch): 
