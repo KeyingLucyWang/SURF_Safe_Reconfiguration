@@ -897,8 +897,8 @@ def check_AD_conditions(world):
     
     (is_safe_vehicles, vehicle, dist) = is_safe_from_vehicles(world)
     if (not is_safe_vehicles):
-        print("unsafe distance {}".format(dist))
-        print("unsafe vehicle: " + vehicle.type_id)
+        # print("unsafe distance {}".format(dist))
+        # print("unsafe vehicle: " + vehicle.type_id)
         return False
 
     (is_safe_obstacles, obstacle, dist) = is_safe_from_obstacles(world)
@@ -1039,6 +1039,16 @@ def game_loop(args):
                     
                     if(controller._control_mode != "Transition" or not controller._manual_input):
                         world.player.apply_control(control)
+                    
+                    if(controller._control_mode == "Transition"):
+                        is_safe_vehicles = is_safe_from_vehicles(world)[0]
+                        is_safe_obstacles = is_safe_from_obstacles(world)[0]
+                        if(not is_safe_vehicles or not is_safe_obstacles):
+                            print("emergency stop")
+                            agent.emergency_stop()
+                            controller._manual_input = True
+
+                    print(str(agent._vehicle.get_transform().rotation.get_forward_vector()))
             else: 
                 # if controller control mode is manual, ask the driver 
                 # if they would like to switch into autonomous driving mode

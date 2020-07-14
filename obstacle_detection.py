@@ -8,8 +8,8 @@ def distance(ego, obstacle):
 
 
 def is_safe_from_obstacles(world):
-    # set safe Euclidean distance to 5 meterss
-    safe_distance = 5
+    # set safe Euclidean distance to 3 meterss
+    safe_distance = 3
 
     ego = world.player
     min_dist = -1
@@ -28,7 +28,7 @@ def is_safe_from_obstacles(world):
                 valid_obstacle = False
         if(not valid_obstacle):
             break
-        
+
         for sensor in world.world.get_actors().filter('sensor.*'):
             if obstacle.type_id == sensor.type_id:
                 print("obstacle" + obstacle.type_id + ". sensor" + sensor.type_id)
