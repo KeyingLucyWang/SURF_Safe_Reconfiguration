@@ -245,6 +245,7 @@ class World(object):
 
 class KeyboardControl(object):
     def __init__(self, world, start_in_autopilot, control_mode):
+        self.world = world
         self._autopilot_enabled = start_in_autopilot
 
         self._manual_input = False
@@ -255,6 +256,9 @@ class KeyboardControl(object):
         self._request_sent = False
         self._allow_switch = False
         self._start_request_period = None
+
+        self._lane_change = None
+        self._old_lane_id = None
 
 
         if isinstance(world.player, carla.Vehicle):
@@ -382,6 +386,8 @@ class KeyboardControl(object):
             if isinstance(self._control, carla.VehicleControl):
                 keys = pygame.key.get_pressed()
                 #print(self._manual_input)
+                if (self._control_mode == "Autonomous"):
+                    self._parse_vehicle_keys(keys, clock.get_time())
                 if (self._control_mode == "Transition"):
                     #print("received manual input, disabling automatic control...")
                     # self._manual_input = True
@@ -431,10 +437,26 @@ class KeyboardControl(object):
         if keys[K_LEFT] or keys[K_a]:
             if(self._control_mode == "Transition"):
                 self._manual_input = True
+            if(self._control_mode == "Autonomous"):
+                print("switch into the left lane")
+                self._lane_change = "left"
+
+                cur_waypoint = self.world.map.get_waypoint(self.world.player.get_location())
+                self._old_lane_id = cur_waypoint.lane_id
+                print("old lane id is {}\n".format(self._old_lane_id))
+
             self._steer_cache -= steer_increment
         elif keys[K_RIGHT] or keys[K_d]:
             if(self._control_mode == "Transition"):
                 self._manual_input = True
+            if(self._control_mode == "Autonomous"):
+                print("switch into the right lane")
+                self._lane_change = "right"
+
+                cur_waypoint = self.world.map.get_waypoint(self.world.player.get_location())
+                self._old_lane_id = cur_waypoint.lane_id
+                print("old lane id is {}\n".format(self._old_lane_id))
+
             self._steer_cache += steer_increment
         else:
             self._steer_cache = 0.0
@@ -891,19 +913,16 @@ def in_proximity(agent, location, dest):
     return (abs(location.x - dest.x) <= error) and (abs(location.y - dest.y) <= error)
 
 def check_AD_conditions(world):
-    # check speed limit and weather
-    # use speed limit to determine whether the vehicle is on the highway
-    if (world.player.get_speed_limit() == 30):
-        return False, "speed limit"
-    
+
     # time to collision check
-    (is_safe, ttc) = is_safe_ttc(world, world.hud.server_fps)#clock.get_fps())
-    if (not is_safe):
-        
-        # print("ttc threshold not satisfied: " + str(ttc))
-        return False, ttc
-    # else:
-        # print("ttc threshold satisfied: " + str(ttc))
+    if(world.hud.server_fps != 0):
+        (is_safe, ttc) = is_safe_ttc(world, world.hud.server_fps)#clock.get_fps()), 
+        if (not is_safe):
+            
+            # print("ttc threshold not satisfied: " + str(ttc))
+            return False, ttc
+        # else:
+            # print("ttc threshold satisfied: " + str(ttc))
 
 
     # (is_safe_vehicles, vehicle, dist) = is_safe_from_vehicles(world)
@@ -917,6 +936,12 @@ def check_AD_conditions(world):
     #     print("unsafe distance {}".format(dist))
     #     print("unsafe obstacle: " + obstacle.type_id)
     #     return False
+
+    # check speed limit and weather
+    # use speed limit to determine whether the vehicle is on the highway
+    if (world.player.get_speed_limit() == 30):
+        return False, "speed limit"
+    
 
     weather_params = world.world.get_weather()
     #print(str(weather_params))
@@ -1052,7 +1077,17 @@ def game_loop(args):
                 else:  
                     agent = RoamingAgent(world.player, dest)
                     #print("autonomous agent run step")
-                    control = agent.run_step(dest)
+                    cur_waypoint = world.map.get_waypoint(agent._vehicle.get_location())
+                    
+                    if (cur_waypoint.lane_id != controller._old_lane_id):
+                        print("lane change completed: {}".format(cur_waypoint.lane_id))
+                        controller._lane_change = None
+                        controller._old_lane_id = cur_waypoint.lane_id
+
+                    control = agent.run_step(dest, controller._lane_change)
+                    
+                    # else:
+                    #     controller._lane_change_counter += 1
                     # print("throttle: " + str(control.throttle))
                     control.manual_gear_shift = False
 

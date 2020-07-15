@@ -38,7 +38,7 @@ class RoamingAgent(Agent):
         self._control_mode = control_mode
         #self._local_planner.update_control_mode(dest, control_mode)
 
-    def run_step(self, dest, debug=False):
+    def run_step(self, dest, lane_change, debug=False):
         """
         Execute one step of navigation.
         :return: carla.VehicleControl
@@ -77,7 +77,9 @@ class RoamingAgent(Agent):
         else:
             self._state = AgentState.NAVIGATING
             # standard local planner behavior
-            control = self._local_planner.run_step(dest)
+            if(lane_change):
+                print("signaled lane change: {}".format(lane_change))
+            control = self._local_planner.run_step(dest, lane_change)
             #print("roaming agent control:" + str(control.throttle))
 
         return control

@@ -155,6 +155,7 @@ class LocalPlanner(object):
 
         for _ in range(k):
             last_waypoint = self._waypoints_queue[-1][0]
+            # print("the last waypoint is: " + str(last_waypoint) + "\n")
             next_waypoints = list(last_waypoint.next(self._sampling_radius))
 
             if len(next_waypoints) == 1:
@@ -207,7 +208,7 @@ class LocalPlanner(object):
         self._target_road_option = RoadOption.LANEFOLLOW
         self._global_plan = True
 
-    def run_step(self, dest, debug=False):
+    def run_step(self, dest, lane_change, debug=False):
         """
         Execute one step of local planning which involves running the longitudinal and lateral PID controllers to
         follow the waypoints trajectory.
@@ -215,8 +216,31 @@ class LocalPlanner(object):
         :return:
         """
 
+        # if(lane_change == "right"):
+        #     print('switch into the right lane')
+        #     # change target waypoint to a point on the right lane
+        #     right_lane = self._current_waypoint.get_right_lane()
+        #     new_waypoint = right_lane.next(5)[0]
+        #     # self.target_waypoint = new_waypoint
+        #     self._waypoints_queue.clear()
+        #     self._waypoint_buffer.clear()
+        #     self._waypoints_queue.append((new_waypoint, RoadOption.LANEFOLLOW))
+        # elif(lane_change == "left"):
+        #     print('switch into the left lane')
+        #     # change target waypoint to a point on the right lane
+        #     left_lane = self._current_waypoint.get_left_lane()
+        #     new_waypoint = left_lane.next(5)[0]
+        #     # self.target_waypoint = new_waypoint
+        #     self._waypoints_queue.clear()
+        #     self._waypoint_buffer.clear()
+        #     print(len(self._waypoints_queue))
+        #     # print("new waypoint at " + str(new_waypoint))
+        #     self._waypoints_queue.append((new_waypoint, RoadOption.LANEFOLLOW))
+
         # not enough waypoints in the horizon? => add more!
         if not self._global_plan and len(self._waypoints_queue) < int(self._waypoints_queue.maxlen * 0.5):
+            # print("current waypoint: " + str(self._current_waypoint))
+            # print("add 100 additional waypoints")
             self._compute_next_waypoints(dest, k=100)
 
 
@@ -249,7 +273,26 @@ class LocalPlanner(object):
         self._current_waypoint = self._map.get_waypoint(self._vehicle.get_location())
         # target waypoint
         self.target_waypoint, self._target_road_option = self._waypoint_buffer[0]
+        # print("target waypoint at " + str(self.target_waypoint))
 
+        if(lane_change == "right"):
+            print('switch into the right lane')
+            # change target waypoint to a point on the right lane
+            right_lane = self._current_waypoint.get_right_lane()
+            if (not right_lane):
+                print("cannot switch into the right lane")
+            else:
+                self.target_waypoint = right_lane.next(5)[0]
+            # self.target_waypoint = new_waypoint
+        elif(lane_change == "left"):
+            print('switch into the left lane')
+            # change target waypoint to a point on the right lane
+            left_lane = self._current_waypoint.get_left_lane()
+            if (not left_lane):
+                print("cannot switch into the right lane")
+            else:
+                self.target_waypoint = left_lane.next(5)[0]
+        
         # set the target speed
         speed_limit = self._vehicle.get_speed_limit()
         #set highway driving speed to 40 kmh
