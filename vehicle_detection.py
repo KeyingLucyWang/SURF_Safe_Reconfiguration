@@ -25,7 +25,7 @@ def simulation_run_step(location, velocity, acceleration, interval):
 
 def check_for_collision(location1, location2):
     # naive implementation
-    return location1.distance(location2) < 10
+    return location1.distance(location2) < 5
 
 def time_to_collision(ego, vehicle, ttc_threshold, fps):    
     ego_location = ego.get_location()
@@ -42,10 +42,10 @@ def time_to_collision(ego, vehicle, ttc_threshold, fps):
     int_t = int(t)
     while int_t < min_ttc:
         # check if a crash occurs
-        (new_ego_loc, ego_velocity) = simulation_run_step(ego_location, ego_velocity, ego_acceleration, interval)
-        (new_npc_loc, npc_velocity) = simulation_run_step(npc_location, npc_velocity, npc_acceleration, interval)
+        (ego_location, ego_velocity) = simulation_run_step(ego_location, ego_velocity, ego_acceleration, interval)
+        (npc_location, npc_velocity) = simulation_run_step(npc_location, npc_velocity, npc_acceleration, interval)
 
-        if (check_for_collision(new_ego_loc, new_npc_loc)):
+        if (check_for_collision(ego_location, npc_location)):
             return t
         t += interval
         int_t = int(t)
@@ -72,7 +72,9 @@ def is_safe_ttc(world, fps):
         if (vehicle.id != ego.id and ego.get_location().distance(vehicle.get_location()) < 200):
             ttc = time_to_collision(ego, vehicle, min_ttc, fps)
             if (ttc < min_ttc):
-                print("does not meet the ttc threshold: potential crash")
+                # print("does not meet the ttc threshold: potential crash")
+                print("potential crash with {}".format(vehicle.type_id))
+                print("at distance {}".format(ego.get_location().distance(vehicle.get_location())))
                 return (False, ttc)
     return (True, min_ttc)
 

@@ -335,7 +335,7 @@ class KeyboardControl(object):
                     if(self._control_mode == "Manual"):
                         print("driver requested to enter autonomous control mode")
                         #only enter autonomous mode if 
-                        if(check_AD_conditions(world)):
+                        if(check_AD_conditions(world)[0]):
                             self._manual_input = False
                             self._control_mode = "Autonomous"
                         else:
@@ -894,14 +894,16 @@ def check_AD_conditions(world):
     # check speed limit and weather
     # use speed limit to determine whether the vehicle is on the highway
     if (world.player.get_speed_limit() == 30):
-        return False
+        return False, "speed limit"
     
     # time to collision check
     (is_safe, ttc) = is_safe_ttc(world, world.hud.server_fps)#clock.get_fps())
     if (not is_safe):
-        print("ttc threshold not satisfied: " + str(ttc))
-    else:
-        print("ttc threshold satisfied: " + str(ttc))
+        
+        # print("ttc threshold not satisfied: " + str(ttc))
+        return False, ttc
+    # else:
+        # print("ttc threshold satisfied: " + str(ttc))
 
 
     # (is_safe_vehicles, vehicle, dist) = is_safe_from_vehicles(world)
@@ -935,9 +937,9 @@ def check_AD_conditions(world):
         or weather_params.precipitation > precipitation_threshold
         or weather_params.precipitation_deposits > precipitation_deposits_threshold
         or weather_params.wind_intensity > wind_intensity_threshold):
-        return False
+        return False, "weather"
 
-    return True
+    return True, "passed"
 
 # def send_mode_switch_request(seconds):
 #     def _get_response(stdscr):
@@ -1026,11 +1028,21 @@ def game_loop(args):
             pygame.display.flip()
 
 
+            controller._conditions_satisfied, additional_info = check_AD_conditions(world)
+
+            if not controller._conditions_satisfied:
+                if additional_info == "speed limit":
+                    print("speed limit requirement not satisfied")
+                elif additional_info == "weather":
+                    print("weather requirement not satisfied")
+                else:
+                    print("TTC requirement not satisfied: " + str(additional_info))
+                    controller._control_mode = "Manual"
             #agent.update_agent_control(dest, controller._control_mode)
             # print("agent control mode is " + str(agent._control_mode))
             if(controller._control_mode != "Manual"): #not controller._manual_input):
                 #print("enter autonomous mode")
-                if(controller._control_mode == "Autonomous" and not check_AD_conditions(world)):
+                if(controller._control_mode == "Autonomous" and not controller._conditions_satisfied):
                     print("AD conditions not satisfied, preparing to switch to manual mode")
                     controller._control_mode = "Transition"
                     controller._manual_input = False
@@ -1071,7 +1083,7 @@ def game_loop(args):
                 # if they would like to switch into autonomous driving mode
                 assert(controller._control_mode == "Manual")
                 # give the driver 10 seconds to choose to mode transition
-                controller._conditions_satisfied = check_AD_conditions(world) 
+                # controller._conditions_satisfied, additional_info = check_AD_conditions(world) 
                 if(controller._conditions_satisfied and not controller._request_sent and not controller._allow_switch):
                     controller._start_request_period = time.time()
                     controller._allow_switch = True
@@ -1089,7 +1101,6 @@ def game_loop(args):
                     if(cur_time != prev_time):
                         print("Time remaining: {}".format(10 - int(time.time() - controller._start_request_period)))
                         prev_time = cur_time
-
 
 
                 # if(check_AD_conditions(world) and not controller._request_sent):
@@ -1185,4 +1196,3 @@ def main():
 if __name__ == '__main__':
 
     main()
-
