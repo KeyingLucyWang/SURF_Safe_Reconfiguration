@@ -46,10 +46,10 @@ def time_to_collision(ego, vehicle, ttc_threshold, fps):
         (new_npc_loc, npc_velocity) = simulation_run_step(npc_location, npc_velocity, npc_acceleration, interval)
 
         if (check_for_collision(new_ego_loc, new_npc_loc)):
-            return False
+            return t
         t += interval
         int_t = int(t)
-    return True
+    return min_ttc
 
 
 
