@@ -101,7 +101,7 @@ import carla
 from carla import ColorConverter as cc
 from roaming_agent import RoamingAgent
 
-from vehicle_detection import is_safe_from_vehicles
+from vehicle_detection import is_safe_from_vehicles, is_safe_ttc
 from obstacle_detection import is_safe_from_obstacles
 
 # import curses library to build an interactive asynchronous user interface
@@ -412,6 +412,7 @@ class KeyboardControl(object):
 
                     self._parse_vehicle_keys(keys, clock.get_time())
                     self._control.reverse = self._control.gear < 0
+                    # print("applying control: current time is {}".format(time.time()))
                     world.player.apply_control(self._control)
     
             elif isinstance(self._control, carla.WalkerControl):
@@ -895,17 +896,25 @@ def check_AD_conditions(world):
     if (world.player.get_speed_limit() == 30):
         return False
     
-    (is_safe_vehicles, vehicle, dist) = is_safe_from_vehicles(world)
-    if (not is_safe_vehicles):
-        # print("unsafe distance {}".format(dist))
-        # print("unsafe vehicle: " + vehicle.type_id)
-        return False
+    # time to collision check
+    (is_safe, ttc) = is_safe_ttc(world, world.hud.server_fps)#clock.get_fps())
+    if (not is_safe):
+        print("ttc threshold not satisfied: " + str(ttc))
+    else:
+        print("ttc threshold satisfied: " + str(ttc))
 
-    (is_safe_obstacles, obstacle, dist) = is_safe_from_obstacles(world)
-    if (not is_safe_obstacles):
-        print("unsafe distance {}".format(dist))
-        print("unsafe obstacle: " + obstacle.type_id)
-        return False
+
+    # (is_safe_vehicles, vehicle, dist) = is_safe_from_vehicles(world)
+    # if (not is_safe_vehicles):
+    #     # print("unsafe distance {}".format(dist))
+    #     # print("unsafe vehicle: " + vehicle.type_id)
+    #     return False
+
+    # (is_safe_obstacles, obstacle, dist) = is_safe_from_obstacles(world)
+    # if (not is_safe_obstacles):
+    #     print("unsafe distance {}".format(dist))
+    #     print("unsafe obstacle: " + obstacle.type_id)
+    #     return False
 
     weather_params = world.world.get_weather()
     #print(str(weather_params))
@@ -998,7 +1007,12 @@ def game_loop(args):
         # agent = RoamingAgent(world.player, dest, controller._control_mode)
         
         clock = pygame.time.Clock()
+        counter = 0
         while True:
+            # print("while loop called: {}".format(counter))
+            # print("current time is {}".format(time.time()))
+            # print("fps is {}".format(clock.get_fps()))
+            counter += 1
             if(controller._control_mode != "Autonomous"):# and controller._manual_input):
                 clock.tick_busy_loop(60)
     
@@ -1019,6 +1033,7 @@ def game_loop(args):
                 if(controller._control_mode == "Autonomous" and not check_AD_conditions(world)):
                     print("AD conditions not satisfied, preparing to switch to manual mode")
                     controller._control_mode = "Transition"
+                    controller._manual_input = False
 
                     # mark the start time of the transition period 
                     controller._start_transition = time.time()
@@ -1042,13 +1057,15 @@ def game_loop(args):
                     
                     if(controller._control_mode == "Transition"):
                         is_safe_vehicles = is_safe_from_vehicles(world)[0]
+                        dist = is_safe_from_vehicles(world)[2]
                         is_safe_obstacles = is_safe_from_obstacles(world)[0]
-                        if(not is_safe_vehicles or not is_safe_obstacles):
-                            print("emergency stop")
+                        if(not is_safe_vehicles and dist < 20):# or not is_safe_obstacles):
+                            print("emergency stop: distance from other vehicles < 20m")
                             agent.emergency_stop()
                             controller._manual_input = True
-
-                    print(str(agent._vehicle.get_transform().rotation.get_forward_vector()))
+                            controller._request_sent = False
+    
+                    # print(str(agent._vehicle.get_transform().rotation.get_forward_vector()))
             else: 
                 # if controller control mode is manual, ask the driver 
                 # if they would like to switch into autonomous driving mode
@@ -1064,6 +1081,7 @@ def game_loop(args):
 
                 if(not controller._conditions_satisfied and controller._allow_switch):
                     controller._allow_switch = False
+                    controller._request_sent = False
 
                 # print switch request countdown time
                 if(controller._start_request_period != None and controller._allow_switch): 
