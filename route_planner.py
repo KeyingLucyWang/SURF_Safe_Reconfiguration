@@ -65,6 +65,8 @@ class LocalPlanner(object):
         self._vehicle = vehicle
         self._map = self._vehicle.get_world().get_map()
 
+        # self._world = world
+
         self._dt = None
         self._target_speed = None
         self._sampling_radius = None
@@ -208,7 +210,7 @@ class LocalPlanner(object):
         self._target_road_option = RoadOption.LANEFOLLOW
         self._global_plan = True
 
-    def run_step(self, dest, lane_change, debug=False):
+    def run_step(self, dest, lane_change, world, debug=False):
         """
         Execute one step of local planning which involves running the longitudinal and lateral PID controllers to
         follow the waypoints trajectory.
@@ -274,34 +276,36 @@ class LocalPlanner(object):
         # target waypoint
         self.target_waypoint, self._target_road_option = self._waypoint_buffer[0]
         # print("target waypoint at " + str(self.target_waypoint))
+        
+
 
         if(lane_change == "right"):
-            print('switch into the right lane')
+            # print('switch into the right lane')
             # change target waypoint to a point on the right lane
             right_lane = self._current_waypoint.get_right_lane()
             if (not right_lane):
                 print("cannot switch into the right lane")
             else:
-                self.target_waypoint = right_lane.next(5)[0]
+                self.target_waypoint = right_lane.next(5)[-1]
             # self.target_waypoint = new_waypoint
         elif(lane_change == "left"):
-            print('switch into the left lane')
+            # print('switch into the left lane')
             # change target waypoint to a point on the right lane
             left_lane = self._current_waypoint.get_left_lane()
             if (not left_lane):
                 print("cannot switch into the right lane")
             else:
-                self.target_waypoint = left_lane.next(5)[0]
+                self.target_waypoint = left_lane.next(5)[-1]
         
-        # set the target speed
-        speed_limit = self._vehicle.get_speed_limit()
-        #set highway driving speed to 40 kmh
-        if(speed_limit > 30):
-            self.set_speed(30)
-        # otherwise, set driving speed to 20 kmh
-        else:
-            self.set_speed(20)
-        #self.set_speed(30)
+        # # set the target speed
+        # speed_limit = self._vehicle.get_speed_limit()
+        # #set highway driving speed to 40 kmh
+        # if(speed_limit > 30):
+        #     self.set_speed(30)
+        # # otherwise, set driving speed to 20 kmh
+        # else:
+        #     self.set_speed(20)
+
 
         # move using PID controllers
         #print("target_speed: " + str(self._target_speed))

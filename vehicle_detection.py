@@ -25,7 +25,7 @@ def simulation_run_step(location, velocity, acceleration, interval):
 
 def check_for_collision(location1, location2):
     # naive implementation
-    return location1.distance(location2) < 5
+    return location1.distance(location2) < 3
 
 def time_to_collision(world, ego, vehicle, ttc_threshold, fps):    
     ego_location = ego.get_location()
@@ -52,13 +52,13 @@ def time_to_collision(world, ego, vehicle, ttc_threshold, fps):
             print("ego speed: {} km/h".format(ego_speed))
             print("npc velocity after {} seconds: {}".format(t, npc_velocity))
             npc_speed = 3.6 * math.sqrt(npc_velocity.x**2 + npc_velocity.y**2 + npc_velocity.z**2)
-            print("ego speed: {} km/h".format(npc_speed))
+            print("npc speed: {} km/h".format(npc_speed))
 
             print("ego location: " + str(ego_location))
             print("npc location: " + str(npc_location))
             cur_waypoint = world.map.get_waypoint(ego_location)
             print("lane width: {}".format(str(cur_waypoint.lane_width)))
-            print("crash distance: {} (should be less than 5)\n".format(ego_location.distance(npc_location)))
+            print("crash distance: {} (should be less than 3)\n".format(ego_location.distance(npc_location)))
             return t
         t += interval
         int_t = int(t)
@@ -87,8 +87,8 @@ def is_safe_ttc(world, fps):
             if (ttc < min_ttc):
                 print("potential crash with {}".format(vehicle.type_id))
                 print("at distance {}\n".format(ego.get_location().distance(vehicle.get_location())))
-                return (False, ttc)
-    return (True, min_ttc)
+                return (False, ttc, vehicle.id)
+    return (True, min_ttc, -1)
 
 # detect the lateral distance between the ego vehicle and a specified npc vehicle
 def lateral_distance(ego, npc):

@@ -100,6 +100,7 @@ except IndexError:
 import carla
 from carla import ColorConverter as cc
 from roaming_agent import RoamingAgent
+from agents.tools.misc import get_speed
 
 from vehicle_detection import is_safe_from_vehicles, is_safe_ttc
 from obstacle_detection import is_safe_from_obstacles
@@ -190,6 +191,7 @@ class World(object):
 
             #waypoint = self.map.get_waypoint(carla.Location(x=48, y=330, z=30))
             self.player = self.world.spawn_actor(blueprint, waypoint.transform)
+            print("spawned player with player id: " + str(self.player.id))
             #self.player = self.world.try_spawn_actor(blueprint, spawn_point)
             
             # spawn npc vehicle to the (1)right or (2)left of the ego vehicle
@@ -916,9 +918,10 @@ def check_AD_conditions(world):
 
     # time to collision check
     if(world.hud.server_fps != 0):
-        (is_safe, ttc) = is_safe_ttc(world, world.hud.server_fps)#clock.get_fps()), 
+        (is_safe, ttc, npc_id) = is_safe_ttc(world, world.hud.server_fps)#clock.get_fps()), 
         if (not is_safe):
-            
+            # npc = world.map.get_actor(npc_id)
+            # npc_speed = get_speed(npc)
             # print("ttc threshold not satisfied: " + str(ttc))
             return False, ttc
         # else:
@@ -1056,13 +1059,17 @@ def game_loop(args):
             controller._conditions_satisfied, additional_info = check_AD_conditions(world)
 
             if not controller._conditions_satisfied:
-                if additional_info == "speed limit":
-                    print("speed limit requirement not satisfied")
-                elif additional_info == "weather":
-                    print("weather requirement not satisfied")
-                else:
+                # if additional_info == "speed limit":
+                #     print("speed limit requirement not satisfied")
+                # elif additional_info == "weather":
+                #     print("weather requirement not satisfied")
+                # else:
+                if additional_info != "weather" and additional_info != "speed limit":
                     print("TTC requirement not satisfied: " + str(additional_info))
+                    # if additional_info < controller._proximity_threshold:
+                    #     agent.emergency_stop()
                     controller._control_mode = "Manual"
+                    controller._request_sent = False
             #agent.update_agent_control(dest, controller._control_mode)
             # print("agent control mode is " + str(agent._control_mode))
             if(controller._control_mode != "Manual"): #not controller._manual_input):
@@ -1080,11 +1087,14 @@ def game_loop(args):
                     cur_waypoint = world.map.get_waypoint(agent._vehicle.get_location())
                     
                     if (cur_waypoint.lane_id != controller._old_lane_id):
-                        print("lane change completed: {}".format(cur_waypoint.lane_id))
+                        # print("lane change completed: {}".format(cur_waypoint.lane_id))
                         controller._lane_change = None
                         controller._old_lane_id = cur_waypoint.lane_id
 
-                    control = agent.run_step(dest, controller._lane_change)
+                    # ********************************* #
+                    # check if lane change is possible here
+                    # ********************************* #
+                    control = agent.run_step(dest, controller._lane_change, world)
                     
                     # else:
                     #     controller._lane_change_counter += 1
@@ -1102,15 +1112,15 @@ def game_loop(args):
                     if(controller._control_mode != "Transition" or not controller._manual_input):
                         world.player.apply_control(control)
                     
-                    if(controller._control_mode == "Transition"):
-                        is_safe_vehicles = is_safe_from_vehicles(world)[0]
-                        dist = is_safe_from_vehicles(world)[2]
-                        is_safe_obstacles = is_safe_from_obstacles(world)[0]
-                        if(not is_safe_vehicles and dist < 20):# or not is_safe_obstacles):
-                            print("emergency stop: distance from other vehicles < 20m")
-                            agent.emergency_stop()
-                            controller._manual_input = True
-                            controller._request_sent = False
+                    # if(controller._control_mode == "Transition"):
+                    #     is_safe_vehicles = is_safe_from_vehicles(world)[0]
+                    #     dist = is_safe_from_vehicles(world)[2]
+                    #     is_safe_obstacles = is_safe_from_obstacles(world)[0]
+                    #     if(not is_safe_vehicles and dist < 20):# or not is_safe_obstacles):
+                    #         print("emergency stop: distance from other vehicles < 20m")
+                    #         agent.emergency_stop()
+                    #         controller._manual_input = True
+                    #         controller._request_sent = False
     
                     # print(str(agent._vehicle.get_transform().rotation.get_forward_vector()))
             else: 

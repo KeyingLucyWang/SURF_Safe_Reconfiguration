@@ -38,7 +38,7 @@ class RoamingAgent(Agent):
         self._control_mode = control_mode
         #self._local_planner.update_control_mode(dest, control_mode)
 
-    def run_step(self, dest, lane_change, debug=False):
+    def run_step(self, dest, lane_change, world, debug=False):
         """
         Execute one step of navigation.
         :return: carla.VehicleControl
@@ -56,8 +56,7 @@ class RoamingAgent(Agent):
         # check possible obstacles
         vehicle_state, vehicle = self._is_vehicle_hazard(vehicle_list)
         if vehicle_state:
-            if debug:
-                print('!!! VEHICLE BLOCKING AHEAD [{}])'.format(vehicle.id))
+            print('!!! VEHICLE BLOCKING AHEAD [{}])'.format(vehicle.id))
 
             self._state = AgentState.BLOCKED_BY_VEHICLE
             hazard_detected = True
@@ -77,9 +76,9 @@ class RoamingAgent(Agent):
         else:
             self._state = AgentState.NAVIGATING
             # standard local planner behavior
-            if(lane_change):
-                print("signaled lane change: {}".format(lane_change))
-            control = self._local_planner.run_step(dest, lane_change)
+            # if(lane_change):
+            #     print("signaled lane change: {}".format(lane_change))
+            control = self._local_planner.run_step(dest, lane_change, world)
             #print("roaming agent control:" + str(control.throttle))
 
         return control
