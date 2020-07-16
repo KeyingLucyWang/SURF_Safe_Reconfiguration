@@ -344,10 +344,12 @@ class KeyboardControl(object):
                         if(check_AD_conditions(world)[0]):
                             self._manual_input = False
                             self._control_mode = "Autonomous"
+                            world.hud.notification("Switched into Autonomous mode. Press 't' to request Manual control")
                         else:
                             print("AD conditions not satisfied; Failed to enter autonomous mode")
                     elif(self._control_mode == "Autonomous"):
                         print("driver requested to enter manual control mode")
+                        world.hud.notification("Requested to enter Manual mode. Entering Transition mode")
                         # self._control_mode = "Manual"
                         self._control_mode = "Transition"
                         # awaiting manual input
@@ -364,6 +366,7 @@ class KeyboardControl(object):
                 elif event.key == K_y:
                     if(self._conditions_satisfied and self._request_sent and self._allow_switch):
                         self._control_mode = "Autonomous"
+                        world.hud.notification("Driver confirmed mode switch into Autonomous mode")
                         print("switched to autonomos mode")
                         # self._request_sent = True
                     
@@ -401,10 +404,13 @@ class KeyboardControl(object):
                     #                                     or if the time limit of the transition period is exceeded
                     cur_time = int(time.time() - self._start_transition)
                     if(cur_time != self._transition_prev_time):
-                            print("Time remaining: {}".format(10 - int(time.time() - self._start_transition)))
-                            self._transition_prev_time = cur_time
+                        time_remaining = 10 - int(time.time() - self._start_transition)
+                        print("Time remaining: {}".format(time_remaining))
+                        world.hud.notification("Waiting for manual input... Time remaining: {}".format(time_remaining))
+                        self._transition_prev_time = cur_time
                     if(self._manual_input or (cur_time > 10)):
                         print("transition end time: {}".format(int(time.time())))
+                        world.hud.notification("End of the Transition mode. Switched into Manual control")
                         self._control_mode = "Manual"
                         self._allow_switch = False
                         self._request_sent = False
@@ -416,6 +422,7 @@ class KeyboardControl(object):
                     if (self._conditions_satisfied and self._request_sent and 
                         time.time() - self._start_request_period > 10 and self._allow_switch):
                         print("request period ended")
+                        world.hud.notification("End of mode switch request period. Press 't' to request a switch into Autonomous mode")
                         self._allow_switch = False
 
                     self._parse_vehicle_keys(keys, clock.get_time())
@@ -766,7 +773,7 @@ class LaneInvasionSensor(object):
             return
         lane_types = set(x.type for x in event.crossed_lane_markings)
         text = ['%r' % str(x).split()[-1] for x in lane_types]
-        self.hud.notification('Crossed line %s' % ' and '.join(text))
+        # self.hud.notification('Crossed line %s' % ' and '.join(text))
 
 # ==============================================================================
 # -- GnssSensor --------------------------------------------------------
@@ -943,6 +950,7 @@ def check_AD_conditions(world):
     # check speed limit and weather
     # use speed limit to determine whether the vehicle is on the highway
     if (world.player.get_speed_limit() == 30):
+        world.hud.notification("Autonomous mode not available: Speed limit requirement not satisfied.")
         return False, "speed limit"
     
 
@@ -965,6 +973,7 @@ def check_AD_conditions(world):
         or weather_params.precipitation > precipitation_threshold
         or weather_params.precipitation_deposits > precipitation_deposits_threshold
         or weather_params.wind_intensity > wind_intensity_threshold):
+        world.hud.notification("Autonomous mode not available: Weather parameters requirement not satisfied.")
         return False, "weather"
 
     return True, "passed"
@@ -1068,8 +1077,10 @@ def game_loop(args):
                     print("TTC requirement not satisfied: " + str(additional_info))
                     # if additional_info < controller._proximity_threshold:
                     #     agent.emergency_stop()
+                    world.hud.notification("Autonomous mode not available: Time-To-Collision requirement not satisfied. TTC: {}s < 4s".format(round(additional_info, 1)))
                     controller._control_mode = "Manual"
-                    controller._request_sent = False
+                    controller._allow_switch = False
+                    controller._request_sent = True
             #agent.update_agent_control(dest, controller._control_mode)
             # print("agent control mode is " + str(agent._control_mode))
             if(controller._control_mode != "Manual"): #not controller._manual_input):
@@ -1086,7 +1097,8 @@ def game_loop(args):
                     #print("autonomous agent run step")
                     cur_waypoint = world.map.get_waypoint(agent._vehicle.get_location())
                     
-                    if (cur_waypoint.lane_id != controller._old_lane_id):
+                    if (controller._lane_change and cur_waypoint.lane_id != controller._old_lane_id):
+                        hud.notification("Switched into the " + str(controller._lane_change) + " lane")
                         # print("lane change completed: {}".format(cur_waypoint.lane_id))
                         controller._lane_change = None
                         controller._old_lane_id = cur_waypoint.lane_id
@@ -1133,7 +1145,8 @@ def game_loop(args):
                     controller._start_request_period = time.time()
                     controller._allow_switch = True
                     controller._request_sent = True
-                    print("Press 'y' to switch into autonomous mode")
+                    # print("Press 'y' to switch into autonomous mode")
+                    # world.hud.notification("Press 'y' to confirm mode switch into Autonomous mode")
                     prev_time = 10
 
                 if(not controller._conditions_satisfied and controller._allow_switch):
@@ -1144,7 +1157,9 @@ def game_loop(args):
                 if(controller._start_request_period != None and controller._allow_switch): 
                     cur_time = int(time.time() - controller._start_request_period)
                     if(cur_time != prev_time):
-                        print("Time remaining: {}".format(10 - int(time.time() - controller._start_request_period)))
+                        time_remaining = 10 - int(time.time() - controller._start_request_period)
+                        print("Time remaining: {}".format(time_remaining))
+                        world.hud.notification("Press 'y' to confirm mode switch into Autonomous mode. Time remaining: {}".format(time_remaining))
                         prev_time = cur_time
 
 
