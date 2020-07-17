@@ -74,11 +74,6 @@ def is_safe_ttc(world, fps):
 
     #..., -2, -1, 0(reference line), 1, 2,...
     # same signedness indicates same direction
-    # cur_lane = cur_waypoint.lane_id 
-    # cur_road = cur_waypoint.road_id
-
-    # left_lane = cur_waypoint.get_left_lane()
-    # right_lane = cur_waypoint.get_right_lane()
 
     for vehicle in world.world.get_actors().filter('vehicle.*'):
         # only consider vehicles within a 200 meter radius
@@ -89,6 +84,75 @@ def is_safe_ttc(world, fps):
                 print("at distance {}\n".format(ego.get_location().distance(vehicle.get_location())))
                 return (False, ttc, vehicle.id)
     return (True, min_ttc, -1)
+
+
+
+def lane_change_ttc(world, location, velocity, acceleration, vehicle, ttc_threshold, fps):    
+    ego_location = location
+    ego_velocity = velocity
+    ego_acceleration = acceleration
+
+    npc_location = vehicle.get_location()
+    npc_velocity = vehicle.get_velocity()
+    npc_acceleration = vehicle.get_acceleration()
+
+    min_ttc = ttc_threshold
+    interval = 1.0/fps
+    t = 0.0
+    int_t = int(t)
+    while int_t < min_ttc:
+        # check if a crash occurs
+        (ego_location, ego_velocity) = simulation_run_step(ego_location, ego_velocity, ego_acceleration, interval)
+        (npc_location, npc_velocity) = simulation_run_step(npc_location, npc_velocity, npc_acceleration, interval)
+
+        if (check_for_collision(ego_location, npc_location)):
+            print("fps is {}, time interval is 1/fps = {}".format(fps, interval))
+            print("ego velocity after {} seconds: {}".format(t, ego_velocity))
+            ego_speed = 3.6 * math.sqrt(ego_velocity.x**2 + ego_velocity.y**2 + ego_velocity.z**2)
+            print("ego speed: {} km/h".format(ego_speed))
+            print("npc velocity after {} seconds: {}".format(t, npc_velocity))
+            npc_speed = 3.6 * math.sqrt(npc_velocity.x**2 + npc_velocity.y**2 + npc_velocity.z**2)
+            print("npc speed: {} km/h".format(npc_speed))
+
+            print("ego location: " + str(ego_location))
+            print("npc location: " + str(npc_location))
+            cur_waypoint = world.map.get_waypoint(ego_location)
+            print("lane width: {}".format(str(cur_waypoint.lane_width)))
+            print("crash distance: {} (should be less than 3)\n".format(ego_location.distance(npc_location)))
+            return t
+        t += interval
+        int_t = int(t)
+    return min_ttc
+
+def is_safe_lane_change(world, ego, lane_change, fps):
+    min_ttc = 4
+
+    cur_waypoint = world.map.get_waypoint(ego.get_location())
+    if lane_change == "left":
+        target = cur_waypoint.get_left_lane()
+    elif lane_change == "right":
+        target = cur_waypoint.get_right_lane()
+    else:
+        target = None
+
+    if target != None:
+        target_location = target.transform.location
+        for vehicle in world.world.get_actors().filter('vehicle.*'):
+            vehicle_waypoint = world.map.get_waypoint(vehicle.get_location())
+            if (ego.id != vehicle.id 
+                and target_location.distance(vehicle.get_location()) < 200
+                and target.lane_id == vehicle_waypoint.lane_id):
+                print("checking lane change safe")
+                acceleration = carla.Vector3D(0,0,0)
+                ttc = lane_change_ttc(world, target_location, ego.get_velocity(), acceleration, vehicle, min_ttc, fps)
+                if (ttc < min_ttc):
+                    print("potential crash with {}".format(vehicle.type_id))
+                    print("at distance {}\n".format(ego.get_location().distance(vehicle.get_location())))
+                    return (False, ttc, vehicle.id)
+    return (True, min_ttc, -1)
+
+
+
 
 # detect the lateral distance between the ego vehicle and a specified npc vehicle
 def lateral_distance(ego, npc):

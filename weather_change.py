@@ -80,6 +80,7 @@ try:
 
     from pygame.locals import K_t
     from pygame.locals import K_y
+    from pygame.locals import K_b
 
 except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
@@ -102,7 +103,7 @@ from carla import ColorConverter as cc
 from roaming_agent import RoamingAgent
 from agents.tools.misc import get_speed
 
-from vehicle_detection import is_safe_from_vehicles, is_safe_ttc
+from vehicle_detection import is_safe_from_vehicles, is_safe_ttc, is_safe_lane_change
 from obstacle_detection import is_safe_from_obstacles
 
 # import curses library to build an interactive asynchronous user interface
@@ -177,28 +178,12 @@ class World(object):
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
 
         while self.player is None:
-            # spawn_points = self.map.get_spawn_points()
-            # spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
-
-            # start position on the rightmost lane of the highway (exit lane)
-            #waypoint = self.map.get_waypoint(carla.Location(x=15.3, y=-36, z=30))
-            #end location: waypoint = self.map.get_waypoint(carla.Location(x=10, y=-160, z=30))
-            
             #enter highway (speed limit 30 -> 90)
-            waypoint = self.map.get_waypoint(carla.Location(x=20, y=-174, z=30))
+            waypoint = self.map.get_waypoint(carla.Location(x=7.5, y=-160, z=30))
             
-            #waypoint = self.map.get_waypoint(carla.Location(x=20, y=-174, z=30))
 
-            #waypoint = self.map.get_waypoint(carla.Location(x=48, y=330, z=30))
             self.player = self.world.spawn_actor(blueprint, waypoint.transform)
             print("spawned player with player id: " + str(self.player.id))
-            #self.player = self.world.try_spawn_actor(blueprint, spawn_point)
-            
-            # spawn npc vehicle to the (1)right or (2)left of the ego vehicle
-            # direction = "left"
-            # if not spawn_vehicle(self.world, direction):
-            #     print("failed to spawn npc vehicle")
-            
 
         # Set up the sensors.
         self.collision_sensor = CollisionSensor(self.player, self.hud)
@@ -261,7 +246,10 @@ class KeyboardControl(object):
 
         self._lane_change = None
         self._old_lane_id = None
+        self._emergency_stop = False
 
+        self._rainy_weather = carla.WeatherParameters(30, 80, 0, 60, 300, 0) 
+        self._sunny_weather = carla.WeatherParameters(30, 0, 0, 60, 300, 0) 
 
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
@@ -290,10 +278,12 @@ class KeyboardControl(object):
                     world.hud.help.toggle()
                 elif event.key == K_TAB:
                     world.camera_manager.toggle_camera()
-                elif event.key == K_c and pygame.key.get_mods() & KMOD_SHIFT:
-                    world.next_weather(reverse=True)
+                elif event.key == K_b: #event.key == K_c and pygame.key.get_mods() & KMOD_SHIFT:
+                    print("switch to sunny weather")
+                    world.world.set_weather(self._sunny_weather)
                 elif event.key == K_c:
-                    world.next_weather()
+                    print("switch to rainy weather")
+                    world.world.set_weather(self._rainy_weather)
                 elif event.key == K_BACKQUOTE:
                     world.camera_manager.next_sensor()
                 elif event.key > K_0 and event.key <= K_9:
@@ -337,6 +327,7 @@ class KeyboardControl(object):
                     world.hud.notification("Recording start time is %d" % (world.recording_start))
 
                 elif event.key == K_t:
+                    self._emergency_stop = False
                     #request to enter transition period
                     if(self._control_mode == "Manual"):
                         print("driver requested to enter autonomous control mode")
@@ -350,7 +341,6 @@ class KeyboardControl(object):
                     elif(self._control_mode == "Autonomous"):
                         print("driver requested to enter manual control mode")
                         world.hud.notification("Requested to enter Manual mode. Entering Transition mode")
-                        # self._control_mode = "Manual"
                         self._control_mode = "Transition"
                         # awaiting manual input
                         self._manual_input = False
@@ -360,16 +350,15 @@ class KeyboardControl(object):
                         print("transition start time: " + str(self._start_transition))
 
                     
-                    # if not driver input in 5 seconds --> slow down and come to a full stop
+                    # if not driver input in 10 seconds --> slow down and come to a full stop
                     # during the transition period --> slow down to a reasonable speed to prepare for the transition (5 kmh)
 
                 elif event.key == K_y:
+                    self._emergency_stop = False
                     if(self._conditions_satisfied and self._request_sent and self._allow_switch):
                         self._control_mode = "Autonomous"
                         world.hud.notification("Driver confirmed mode switch into Autonomous mode")
-                        print("switched to autonomos mode")
-                        # self._request_sent = True
-                    
+                        print("switched to autonomos mode")                    
                 
                 if isinstance(self._control, carla.VehicleControl):
                     if event.key == K_q:
@@ -390,33 +379,55 @@ class KeyboardControl(object):
         if not self._autopilot_enabled:
             if isinstance(self._control, carla.VehicleControl):
                 keys = pygame.key.get_pressed()
-                #print(self._manual_input)
+                if (self._control_mode == "PullOver"):
+                    ego_location = world.player.get_location()
+                    ego_waypoint = world.map.get_waypoint(ego_location)
+                    # if player is at the rightmost lane, stop and switch into manual control
+                    if (not ego_waypoint.get_right_lane()):
+                        print("vehicle on the rightmost lane")
+                        self._request_sent = False
+                        self._emergency_stop = True
+                        self._lane_change = None
+                        # self._control_mode = "Manual"
+                    else:
+                        self._lane_change = "right"
+
                 if (self._control_mode == "Autonomous"):
                     self._parse_vehicle_keys(keys, clock.get_time())
                 if (self._control_mode == "Transition"):
-                    #print("received manual input, disabling automatic control...")
-                    # self._manual_input = True
                     self._parse_vehicle_keys(keys, clock.get_time())
                     self._control.reverse = self._control.gear < 0
-                    #print("steer: " + str(self._control.steer))
-
+                    
+                    # set transition period to 5 seconds
+                    transition_period = 5
                     #apply manual control in transition mode if manual input is detected
                     #                                     or if the time limit of the transition period is exceeded
                     cur_time = int(time.time() - self._start_transition)
                     if(cur_time != self._transition_prev_time):
-                        time_remaining = 10 - int(time.time() - self._start_transition)
+                        time_remaining = transition_period - int(time.time() - self._start_transition)
                         print("Time remaining: {}".format(time_remaining))
                         world.hud.notification("Waiting for manual input... Time remaining: {}".format(time_remaining))
                         self._transition_prev_time = cur_time
-                    if(self._manual_input or (cur_time > 10)):
+                    # if(self._manual_input or (cur_time > 10)):
+                    #     print("transition end time: {}".format(int(time.time())))
+                    #     world.hud.notification("End of the Transition mode. Switched into Manual control")
+                    #     self._control_mode = "Manual"
+                    #     self._allow_switch = False
+                    #     self._request_sent = False
+                    if (self._manual_input):
                         print("transition end time: {}".format(int(time.time())))
-                        world.hud.notification("End of the Transition mode. Switched into Manual control")
+                        world.hud.notification("Manual input detected... Switching into Manual control")
                         self._control_mode = "Manual"
                         self._allow_switch = False
                         self._request_sent = False
-                        # world.player.apply_control(self._control)
+                    elif cur_time > transition_period:
+                        world.hud.notification("End of the Transition period. No manual input detected... Pulling over")                        
+                        self._control_mode = "PullOver"
+                        self._allow_switch = False
+                        # self._request_sent = True
+                        self._lane_change = "right"
+
                 if (self._control_mode == "Manual"):
-                    #print("Manual mode")
                     
                     #if a switch request has been sent to the driver
                     if (self._conditions_satisfied and self._request_sent and 
@@ -427,7 +438,6 @@ class KeyboardControl(object):
 
                     self._parse_vehicle_keys(keys, clock.get_time())
                     self._control.reverse = self._control.gear < 0
-                    # print("applying control: current time is {}".format(time.time()))
                     world.player.apply_control(self._control)
     
             elif isinstance(self._control, carla.WalkerControl):
@@ -439,6 +449,7 @@ class KeyboardControl(object):
             if(self._control_mode == "Transition"):
                 self._manual_input = True
             self._control.throttle = 1.0
+            self._emergency_stop = False
         else:
             self._control.throttle = 0.0
         
@@ -453,8 +464,11 @@ class KeyboardControl(object):
                 cur_waypoint = self.world.map.get_waypoint(self.world.player.get_location())
                 self._old_lane_id = cur_waypoint.lane_id
                 print("old lane id is {}\n".format(self._old_lane_id))
-
+            
             self._steer_cache -= steer_increment
+
+            self._emergency_stop = False
+
         elif keys[K_RIGHT] or keys[K_d]:
             if(self._control_mode == "Transition"):
                 self._manual_input = True
@@ -467,16 +481,21 @@ class KeyboardControl(object):
                 print("old lane id is {}\n".format(self._old_lane_id))
 
             self._steer_cache += steer_increment
+
+            self._emergency_stop = False
+
         else:
             self._steer_cache = 0.0
         self._steer_cache = min(0.7, max(-0.7, self._steer_cache))
         self._control.steer = round(self._steer_cache, 1)
-        # print(str(self._control.steer))
         
         if keys[K_DOWN] or keys[K_s]:
             self._control.brake = 1.0 
             if(self._control_mode == "Transition"):
                 self._manual_input = True
+            
+            self._emergency_stop = False
+
         else:
             self._control.brake = 0.0
         self._control.hand_brake = keys[K_SPACE]
@@ -649,7 +668,6 @@ class HUD(object):
                     display.blit(surface, (8, v_offset))
                 v_offset += 18
         self._notifications.render(display)
-        #self.help.render(display)
 
 
 # ==============================================================================
@@ -934,9 +952,9 @@ def check_AD_conditions(world):
 
     # check speed limit and weather
     # use speed limit to determine whether the vehicle is on the highway
-    if (world.player.get_speed_limit() == 30):
-        world.hud.notification("Autonomous mode not available: Speed limit requirement not satisfied.")
-        return False, "speed limit"
+    # if (world.player.get_speed_limit() == 30):
+    #     world.hud.notification("Autonomous mode not available: Speed limit requirement not satisfied.")
+    #     return False, "speed limit"
     
 
     weather_params = world.world.get_weather()
@@ -946,10 +964,10 @@ def check_AD_conditions(world):
     #     weather_params.precipitation_deposits, weather_params.wind_intensity
     #     )
     # )
-    cloudiness_threshold = 20
-    precipitation_threshold = 20
-    precipitation_deposits_threshold = 20
-    wind_intensity_threshold = 20
+    cloudiness_threshold = 50
+    precipitation_threshold = 50
+    precipitation_deposits_threshold = 50
+    wind_intensity_threshold = 50
     #sun_azimuth_angle
     #sun_altitude_angle
 
@@ -962,34 +980,6 @@ def check_AD_conditions(world):
         return False, "weather"
 
     return True, "passed"
-
-# def send_mode_switch_request(seconds):
-#     def _get_response(stdscr):
-#         stdscr.clear()
-#         timeout = time.time() + seconds
-#         response = ""
-#         while time.time() <= timeout and response.lower() != "y":
-#             time_left = int(timeout - time.time())
-#             stdscr.addstr(0, 0, 'Countdown: {} {}'.format(time_left,
-#                                                           "*" * time_left + " " * seconds))
-#             # stdscr.addstr(2, 0, ' ' * 50)
-#             stdscr.addstr(2, 0, 'Your Input: {}'.format(response))
-#             stdscr.refresh()
-#             stdscr.timeout(100)
-#             code = stdscr.getch()
-#             stdscr.addstr(10, 0, 'Code: {}'.format(code))  # for debug only
-#             stdscr.refresh()
-#             if ord("y") == code:
-#                 response  = "y"
-#                 return True
-
-            # if code == 10 and s:  # newline
-            #     return int(s)
-
-            # if code == 127:  # backspace
-            #     s = s[:-1]
-
-    # return curses.wrapper(_get_response)
 
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
@@ -1019,25 +1009,13 @@ def game_loop(args):
         
         controller = KeyboardControl(world, False, starting_mode)
 
-        #waypoints = world.map.generate_waypoints(2)
-
-        # if args.agent == "Roaming":
-        #     agent = RoamingAgent(world.player);
-        # else:
-        #     agent = BasicAgent(world.player);
-
         dest = carla.Location(x=222, y=-300, z=30)
-
-        # agent = RoamingAgent(world.player, dest, controller._control_mode)
         
         clock = pygame.time.Clock()
         counter = 0
         while True:
-            # print("while loop called: {}".format(counter))
-            # print("current time is {}".format(time.time()))
-            # print("fps is {}".format(clock.get_fps()))
             counter += 1
-            if(controller._control_mode != "Autonomous"):# and controller._manual_input):
+            if(controller._control_mode != "Autonomous"):
                 clock.tick_busy_loop(60)
     
             if controller.parse_events(client, world, clock):
@@ -1053,23 +1031,16 @@ def game_loop(args):
             controller._conditions_satisfied, additional_info = check_AD_conditions(world)
 
             if not controller._conditions_satisfied:
-                # if additional_info == "speed limit":
-                #     print("speed limit requirement not satisfied")
-                # elif additional_info == "weather":
-                #     print("weather requirement not satisfied")
-                # else:
+
                 if additional_info != "weather" and additional_info != "speed limit":
                     print("TTC requirement not satisfied: " + str(additional_info))
-                    # if additional_info < controller._proximity_threshold:
-                    #     agent.emergency_stop()
+
                     world.hud.notification("Autonomous mode not available: Time-To-Collision requirement not satisfied. TTC: {}s < 4s".format(round(additional_info, 1)))
                     controller._control_mode = "Manual"
                     controller._allow_switch = False
                     controller._request_sent = True
-            #agent.update_agent_control(dest, controller._control_mode)
-            # print("agent control mode is " + str(agent._control_mode))
-            if(controller._control_mode != "Manual"): #not controller._manual_input):
-                #print("enter autonomous mode")
+
+            if(controller._control_mode != "Manual"): 
                 if(controller._control_mode == "Autonomous" and not controller._conditions_satisfied):
                     print("AD conditions not satisfied, preparing to switch to manual mode")
                     controller._control_mode = "Transition"
@@ -1079,59 +1050,50 @@ def game_loop(args):
                     controller._start_transition = time.time()
                 else:  
                     agent = RoamingAgent(world.player, dest)
-                    #print("autonomous agent run step")
                     cur_waypoint = world.map.get_waypoint(agent._vehicle.get_location())
                     
                     if (controller._lane_change and cur_waypoint.lane_id != controller._old_lane_id):
                         hud.notification("Switched into the " + str(controller._lane_change) + " lane")
-                        # print("lane change completed: {}".format(cur_waypoint.lane_id))
                         controller._lane_change = None
                         controller._old_lane_id = cur_waypoint.lane_id
 
-                    # ********************************* #
-                    # check if lane change is possible here
-                    # ********************************* #
-                    control = agent.run_step(dest, controller._lane_change, world)
-                    
-                    # else:
-                    #     controller._lane_change_counter += 1
-                    # print("throttle: " + str(control.throttle))
+                    if (is_safe_lane_change(world, world.player, controller._lane_change, clock.get_fps())[0]):
+                        control = agent.run_step(dest, controller._lane_change, world)
+                    else:
+                        control = agent.run_step(dest, None, world)
+                
                     control.manual_gear_shift = False
 
-                    # stop the vehicle once it reaches the set destination
-                    location = world.player.get_location()
-                    #print("player location: x={}, y={}, z={}".format(location.x, location.y, location.z))
-                    #print("destination: x={}, y={}, z={}".format(dest.x, dest.y, dest.z))
+                    # location = world.player.get_location()
 
-                    if(in_proximity(agent, location, dest)):
-                        control = agent.emergency_stop()
+                    # if(in_proximity(agent, location, dest)):
+                    #     print("emergency stop")
+                    #     control = agent.emergency_stop()
+
+                    if(controller._emergency_stop):
+                        print("emergency stop")
+                        hud.notification("Vehicle pulled over and stopped... Switching into Manual control")
+                        # control = agent.emergency_stop()
+                        # control.steer += -1
+                        # world.player.apply_control(control)
+                        world.player.set_velocity(carla.Vector3D(0,0,0))
+                        controller._control_mode = "Manual"
+
+                        
                     
                     if(controller._control_mode != "Transition" or not controller._manual_input):
                         world.player.apply_control(control)
-                    
-                    # if(controller._control_mode == "Transition"):
-                    #     is_safe_vehicles = is_safe_from_vehicles(world)[0]
-                    #     dist = is_safe_from_vehicles(world)[2]
-                    #     is_safe_obstacles = is_safe_from_obstacles(world)[0]
-                    #     if(not is_safe_vehicles and dist < 20):# or not is_safe_obstacles):
-                    #         print("emergency stop: distance from other vehicles < 20m")
-                    #         agent.emergency_stop()
-                    #         controller._manual_input = True
-                    #         controller._request_sent = False
+                
     
-                    # print(str(agent._vehicle.get_transform().rotation.get_forward_vector()))
             else: 
                 # if controller control mode is manual, ask the driver 
                 # if they would like to switch into autonomous driving mode
                 assert(controller._control_mode == "Manual")
                 # give the driver 10 seconds to choose to mode transition
-                # controller._conditions_satisfied, additional_info = check_AD_conditions(world) 
                 if(controller._conditions_satisfied and not controller._request_sent and not controller._allow_switch):
                     controller._start_request_period = time.time()
                     controller._allow_switch = True
                     controller._request_sent = True
-                    # print("Press 'y' to switch into autonomous mode")
-                    # world.hud.notification("Press 'y' to confirm mode switch into Autonomous mode")
                     prev_time = 10
 
                 if(not controller._conditions_satisfied and controller._allow_switch):
@@ -1146,19 +1108,6 @@ def game_loop(args):
                         print("Time remaining: {}".format(time_remaining))
                         world.hud.notification("Press 'y' to confirm mode switch into Autonomous mode. Time remaining: {}".format(time_remaining))
                         prev_time = cur_time
-
-
-                # if(check_AD_conditions(world) and not controller._request_sent):
-                #     controller._request_sent = True
-                    # if(send_mode_switch_request(10)):
-                    #     print("switch to autonomous mode")
-
-                # if(check_AD_conditions(world)):
-                #     response = input("Autonomous mode conditions satisfied.\nType 'y' to switch mode: ")
-                #     if(response.lower() == "y"):
-                #         controller._control_mode = "Autonomous"
-                #         controller._manual_input = False
-                #         print("switched into autonomous driving mode")
 
     finally:
 
