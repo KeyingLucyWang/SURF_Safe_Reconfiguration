@@ -174,7 +174,7 @@ class World(object):
 
         while self.player is None:
             #enter highway (speed limit 30 -> 90)
-            waypoint = self.map.get_waypoint(carla.Location(x=20, y=-174, z=30))
+            waypoint = self.map.get_waypoint(carla.Location(x=4.2, y=-196, z=30))
             
             self.player = self.world.spawn_actor(blueprint, waypoint.transform)
             print("spawned player with player id: " + str(self.player.id))
@@ -527,7 +527,8 @@ class HUD(object):
         else: # driving_lane
             waypoint = world.map.get_waypoint(world.player.get_location())
 
-        speed_limit = world.player.get_speed_limit()
+        # speed_limit = world.player.get_speed_limit()
+        speed_limit = 90
 
         self._info_text = [
             'Server:  % 16.0f FPS' % self.server_fps,
@@ -904,9 +905,9 @@ def check_AD_conditions(world):
 
     # check speed limit and weather
     # use speed limit to determine whether the vehicle is on the highway
-    if (world.player.get_speed_limit() == 30):
-        # world.hud.notification("Autonomous mode not available: Speed limit requirement not satisfied.")
-        return False, "speed limit"
+    # if (world.player.get_speed_limit() == 30):
+    #     # world.hud.notification("Autonomous mode not available: Speed limit requirement not satisfied.")
+    #     return False, "speed limit"
     
 
     weather_params = world.world.get_weather()
@@ -920,7 +921,6 @@ def check_AD_conditions(world):
         or weather_params.precipitation > precipitation_threshold
         or weather_params.precipitation_deposits > precipitation_deposits_threshold
         or weather_params.wind_intensity > wind_intensity_threshold):
-        world.hud.notification("Autonomous mode not available: Weather parameters requirement not satisfied.")
         return False, "weather"
 
     return True, "passed"
@@ -977,8 +977,15 @@ def game_loop(args):
 
             if not controller._conditions_satisfied:
                 if additional_info != "weather" and additional_info != "speed limit":
-                    print("TTC requirement not satisfied: " + str(additional_info))
-                    world.hud.notification("Autonomous mode not available: Time-To-Collision requirement not satisfied. TTC: {}s < 4s".format(round(additional_info, 1)))
+                    if controller._control_mode == "Autonomous":
+                        print("autonomous mode, ttc violated")
+                        hud.notification("Time-To-Collision requirement not satisfied: TTC: {}s < 4s. Switching into Manual mode...".format(
+                        round(additional_info, 1)))
+                    else:
+                        print("manual mode, ttc violated")
+                        # world.hud.notification("Autonomous mode not available: Time-To-Collision requirement not satisfied. TTC: {}s < 4s".format(
+                        world.hud.notification("Time-To-Collision requirement not satisfied: TTC: {}s < 4s. Switching into Manual mode...".format(                        
+                        round(additional_info, 1)))
                     controller._control_mode = "Manual"
                     controller._allow_switch = False
                     controller._request_sent = True

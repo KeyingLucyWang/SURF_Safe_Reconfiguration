@@ -179,8 +179,8 @@ class World(object):
 
         while self.player is None:
             #enter highway (speed limit 30 -> 90)
-            waypoint = self.map.get_waypoint(carla.Location(x=7.5, y=-160, z=30))
-            
+            # waypoint = self.map.get_waypoint(carla.Location(x=8.4, y=-20, z=30))
+            waypoint = self.map.get_waypoint(carla.Location(x=8.4, y=20, z=0))
 
             self.player = self.world.spawn_actor(blueprint, waypoint.transform)
             print("spawned player with player id: " + str(self.player.id))
@@ -249,7 +249,7 @@ class KeyboardControl(object):
         self._emergency_stop = False
 
         self._rainy_weather = carla.WeatherParameters(30, 80, 0, 60, 300, 0) 
-        self._sunny_weather = carla.WeatherParameters(30, 0, 0, 60, 300, 0) 
+        self._sunny_weather = carla.WeatherParameters(30, 0, 0, 40, 300, 0) 
 
         if isinstance(world.player, carla.Vehicle):
             self._control = carla.VehicleControl()
@@ -279,10 +279,10 @@ class KeyboardControl(object):
                 elif event.key == K_TAB:
                     world.camera_manager.toggle_camera()
                 elif event.key == K_b: #event.key == K_c and pygame.key.get_mods() & KMOD_SHIFT:
-                    print("switch to sunny weather")
+                    world.hud.notification("Sunny weather")
                     world.world.set_weather(self._sunny_weather)
                 elif event.key == K_c:
-                    print("switch to rainy weather")
+                    world.hud.notification("Rainy weather")
                     world.world.set_weather(self._rainy_weather)
                 elif event.key == K_BACKQUOTE:
                     world.camera_manager.next_sensor()
@@ -1039,7 +1039,8 @@ def game_loop(args):
                     controller._control_mode = "Manual"
                     controller._allow_switch = False
                     controller._request_sent = True
-
+            elif controller._request_sent and not controller._allow_switch:
+                world.hud.notification("Press 't' to switch into Autonomous mode")
             if(controller._control_mode != "Manual"): 
                 if(controller._control_mode == "Autonomous" and not controller._conditions_satisfied):
                     print("AD conditions not satisfied, preparing to switch to manual mode")
@@ -1079,7 +1080,6 @@ def game_loop(args):
                         world.player.set_velocity(carla.Vector3D(0,0,0))
                         controller._control_mode = "Manual"
 
-                        
                     
                     if(controller._control_mode != "Transition" or not controller._manual_input):
                         world.player.apply_control(control)

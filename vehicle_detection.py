@@ -129,9 +129,9 @@ def is_safe_lane_change(world, ego, lane_change, fps):
 
     cur_waypoint = world.map.get_waypoint(ego.get_location())
     if lane_change == "left":
-        target = cur_waypoint.get_left_lane()
+        target = cur_waypoint.get_left_lane().next(5)[-1]
     elif lane_change == "right":
-        target = cur_waypoint.get_right_lane()
+        target = cur_waypoint.get_right_lane().next(5)[-1]
     else:
         target = None
 
@@ -143,8 +143,8 @@ def is_safe_lane_change(world, ego, lane_change, fps):
                 and target_location.distance(vehicle.get_location()) < 200
                 and target.lane_id == vehicle_waypoint.lane_id):
                 print("checking lane change safe")
-                acceleration = carla.Vector3D(0,0,0)
-                ttc = lane_change_ttc(world, target_location, ego.get_velocity(), acceleration, vehicle, min_ttc, fps)
+                # acceleration = carla.Vector3D(0,0,0)
+                ttc = lane_change_ttc(world, target_location, ego.get_velocity(), ego.get_acceleration(), vehicle, min_ttc, fps)
                 if (ttc < min_ttc):
                     print("potential crash with {}".format(vehicle.type_id))
                     print("at distance {}\n".format(ego.get_location().distance(vehicle.get_location())))
