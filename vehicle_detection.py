@@ -46,19 +46,20 @@ def time_to_collision(world, ego, vehicle, ttc_threshold, fps):
         (npc_location, npc_velocity) = simulation_run_step(npc_location, npc_velocity, npc_acceleration, interval)
 
         if (check_for_collision(ego_location, npc_location)):
-            print("fps is {}, time interval is 1/fps = {}".format(fps, interval))
-            print("ego velocity after {} seconds: {}".format(t, ego_velocity))
+            # print("fps is {}, time interval is 1/fps = {}".format(fps, interval))
+            # print("ego velocity after {} seconds: {}".format(t, ego_velocity))
             ego_speed = 3.6 * math.sqrt(ego_velocity.x**2 + ego_velocity.y**2 + ego_velocity.z**2)
-            print("ego speed: {} km/h".format(ego_speed))
-            print("npc velocity after {} seconds: {}".format(t, npc_velocity))
+            # print("ego speed: {} km/h".format(ego_speed))
+            # print("npc velocity after {} seconds: {}".format(t, npc_velocity))
             npc_speed = 3.6 * math.sqrt(npc_velocity.x**2 + npc_velocity.y**2 + npc_velocity.z**2)
-            print("npc speed: {} km/h".format(npc_speed))
-
-            print("ego location: " + str(ego_location))
-            print("npc location: " + str(npc_location))
+            # print("npc speed: {} km/h".format(npc_speed))
+            if(ego_speed <= npc_speed):
+                break;
+            # print("ego location: " + str(ego_location))
+            # print("npc location: " + str(npc_location))
             cur_waypoint = world.map.get_waypoint(ego_location)
-            print("lane width: {}".format(str(cur_waypoint.lane_width)))
-            print("crash distance: {} (should be less than 3)\n".format(ego_location.distance(npc_location)))
+            # print("lane width: {}".format(str(cur_waypoint.lane_width)))
+            # print("crash distance: {} (should be less than 3)\n".format(ego_location.distance(npc_location)))
             return t
         t += interval
         int_t = int(t)
@@ -68,16 +69,21 @@ def time_to_collision(world, ego, vehicle, ttc_threshold, fps):
 
 def is_safe_ttc(world, fps):
     # set the ttc threshold to 4 seconds
-    min_ttc = 4
+    min_ttc = 3
 
     ego = world.player
 
     #..., -2, -1, 0(reference line), 1, 2,...
     # same signedness indicates same direction
-
+    ego_location = ego.get_location()
+    ego_waypoint = world.map.get_waypoint(ego_location)
     for vehicle in world.world.get_actors().filter('vehicle.*'):
+        vehicle_location = vehicle.get_location()
+        vehicle_waypoint = world.map.get_waypoint(vehicle.get_location())
+        same_lane = (ego_waypoint.lane_id == vehicle_waypoint.lane_id)
         # only consider vehicles within a 200 meter radius
-        if (vehicle.id != ego.id and ego.get_location().distance(vehicle.get_location()) < 200):
+        if (vehicle.id != ego.id and ego_location.distance(vehicle_location) < 200
+            and same_lane):
             ttc = time_to_collision(world, ego, vehicle, min_ttc, fps)
             if (ttc < min_ttc):
                 print("potential crash with {}".format(vehicle.type_id))
@@ -106,19 +112,19 @@ def lane_change_ttc(world, location, velocity, acceleration, vehicle, ttc_thresh
         (npc_location, npc_velocity) = simulation_run_step(npc_location, npc_velocity, npc_acceleration, interval)
 
         if (check_for_collision(ego_location, npc_location)):
-            print("fps is {}, time interval is 1/fps = {}".format(fps, interval))
-            print("ego velocity after {} seconds: {}".format(t, ego_velocity))
+            # print("fps is {}, time interval is 1/fps = {}".format(fps, interval))
+            # print("ego velocity after {} seconds: {}".format(t, ego_velocity))
             ego_speed = 3.6 * math.sqrt(ego_velocity.x**2 + ego_velocity.y**2 + ego_velocity.z**2)
-            print("ego speed: {} km/h".format(ego_speed))
-            print("npc velocity after {} seconds: {}".format(t, npc_velocity))
+            # print("ego speed: {} km/h".format(ego_speed))
+            # print("npc velocity after {} seconds: {}".format(t, npc_velocity))
             npc_speed = 3.6 * math.sqrt(npc_velocity.x**2 + npc_velocity.y**2 + npc_velocity.z**2)
-            print("npc speed: {} km/h".format(npc_speed))
+            # print("npc speed: {} km/h".format(npc_speed))
 
-            print("ego location: " + str(ego_location))
-            print("npc location: " + str(npc_location))
+            # print("ego location: " + str(ego_location))
+            # print("npc location: " + str(npc_location))
             cur_waypoint = world.map.get_waypoint(ego_location)
-            print("lane width: {}".format(str(cur_waypoint.lane_width)))
-            print("crash distance: {} (should be less than 3)\n".format(ego_location.distance(npc_location)))
+            # print("lane width: {}".format(str(cur_waypoint.lane_width)))
+            # print("crash distance: {} (should be less than 3)\n".format(ego_location.distance(npc_location)))
             return t
         t += interval
         int_t = int(t)
